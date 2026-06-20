@@ -1,15 +1,7 @@
 node_modules
-# Keep environment variables out of version control
+
+# Environment variables — never commit the connection string / API key
 .env
 
-/src/generated/prisma
-
-/src/generated/prisma
-
+# Generated Prisma client
 /generated/prisma
-
-/src/generated/prisma
-
-/src/generated/prisma
-
-/src/generated/prisma
