@@ -1,11 +1,4 @@
 {
   "files": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.node.json"
-    }
-  ]
+  "comment": "Each package has its own tsconfig. Build/typecheck via workspace scripts (npm run build)."
 }
