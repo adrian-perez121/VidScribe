@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { VideoSummary } from '@vid-mark/shared'
 import AppHeader from '../components/AppHeader'
-import { listVideos, deleteVideo } from '../lib/api'
+import { listVideos, deleteVideo, downloadExport } from '../lib/api'
 
 const NOTES_STORAGE_KEY = 'vidscribe:notes:v1'
 
@@ -110,6 +110,20 @@ function Dashboard() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState<'notes' | 'study-guide' | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  async function handleExport(kind: 'notes' | 'study-guide') {
+    setExportError(null)
+    setExporting(kind)
+    try {
+      await downloadExport(kind) // whole library
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -150,7 +164,29 @@ function Dashboard() {
     <main className="flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AppHeader />
       <div className="flex-1 overflow-y-auto p-6">
-        <h2 className="mb-4 text-lg font-semibold">Your videos</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Your videos</h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleExport('notes')}
+              disabled={exporting !== null}
+              className="rounded-md border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+            >
+              {exporting === 'notes' ? 'Exporting…' : 'Export notes (.docx)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('study-guide')}
+              disabled={exporting !== null}
+              className="rounded-md border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+            >
+              {exporting === 'study-guide' ? 'Generating…' : 'Export study guide (.docx)'}
+            </button>
+          </div>
+        </div>
+
+        {exportError && <p className="mb-4 text-sm text-red-400">{exportError}</p>}
 
         {status === 'loading' && (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
