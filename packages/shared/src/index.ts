@@ -64,6 +64,29 @@ export interface VideoListResponse {
   videos: VideoSummary[]
 }
 
+// --- Transcripts ----------------------------------------------------------
+// Each uploaded video can be transcribed once via Deepgram. The result is
+// stored as timestamped segments (Deepgram "utterances" — sentence-like
+// chunks, not individual words) so later work (a transcript viewer, Redis
+// RAG ingest) can use them without re-calling Deepgram.
+
+/** One timestamped chunk of a video's transcript. */
+export interface TranscriptSegment {
+  startSec: number
+  endSec: number
+  text: string
+}
+
+/** A video's full transcript, stored once per video. */
+export interface VideoTranscript {
+  /** Same id as the video (GridFS file id, hex string). */
+  videoId: string
+  segments: TranscriptSegment[]
+  /** Deepgram model used (or "mock" when MOCK_DEEPGRAM is on), for debugging. */
+  model: string
+  createdAt: string
+}
+
 // --- Research service ---------------------------------------------------------
 // The research service takes a chunk of lecture transcript, filters it down to
 // keywords, searches the web, scrapes the top sites, and returns a single

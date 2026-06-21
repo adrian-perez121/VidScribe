@@ -8,13 +8,17 @@ import type {
   VideoDetail,
   VideoListResponse,
   VidscribeNote,
+  VideoTranscript,
+  TranscriptSegment,
 } from '@vid-mark/shared'
 import {
   getDb,
   getVideoBucket,
   getNotesCollection,
+  getTranscriptsCollection,
   VIDEO_BUCKET,
 } from '../../lib/mongo.js'
+import { createDeepgramClient } from '../../lib/deepgram.js'
 
 // Video routes: upload (streamed into GridFS), list (metadata + thumbnail only),
 // detail (metadata + the notes taken on that video), and range-aware streaming
@@ -154,6 +158,100 @@ videosRoute.get('/:id', async (c) => {
   return c.json(detail)
 })
 
+/** A short, realistic mock transcript used when MOCK_DEEPGRAM=true. */
+function buildMockTranscript(videoId: string): VideoTranscript {
+  const segments: TranscriptSegment[] = [
+    { startSec: 0, endSec: 4.2, text: 'Welcome back to the lecture on cell physiology.' },
+    { startSec: 4.2, endSec: 9.8, text: 'Today we are going to look at how the cell membrane controls what moves in and out of the cell.' },
+    { startSec: 9.8, endSec: 16.5, text: 'Pay close attention to the ion channels highlighted in this next diagram.' },
+  ]
+  return {
+    videoId,
+    segments,
+    model: 'mock',
+    createdAt: new Date().toISOString(),
+  }
+}
+
+// POST /api/videos/:id/transcript — transcribe the video once via Deepgram and
+// store the result. The GridFS download stream is piped directly into the
+// Deepgram SDK (it accepts a Node Readable), so the video is never buffered
+// fully in memory. Re-running this replaces (upserts) the stored transcript.
+videosRoute.post('/:id/transcript', async (c) => {
+  const id = c.req.param('id')
+  const _id = toObjectId(id)
+  if (!_id) return c.json({ error: 'Invalid video id' }, 400)
+
+  const db = await getDb()
+  const doc = await db.collection<VideoFileDoc>(FILES_COLLECTION).findOne({ _id })
+  if (!doc) return c.json({ error: 'Video not found' }, 404)
+
+  const transcriptsCol = await getTranscriptsCollection()
+
+  if (process.env.MOCK_DEEPGRAM === 'true') {
+    const transcript = buildMockTranscript(id)
+    await transcriptsCol.replaceOne({ _id: id }, transcript, { upsert: true })
+    return c.json(transcript)
+  }
+
+  if (!process.env.DEEPGRAM_API_KEY) {
+    return c.json({ error: 'Missing DEEPGRAM_API_KEY. Add it to packages/server/.env.' }, 500)
+  }
+
+  try {
+    const bucket = await getVideoBucket()
+    const videoStream = bucket.openDownloadStream(_id)
+
+    const client = createDeepgramClient()
+    const response = await client.listen.v1.media.transcribeFile(videoStream, {
+      model: 'nova-3',
+      utterances: true,
+    })
+
+    const utterances = 'results' in response ? response.results?.utterances : undefined
+    const segments: TranscriptSegment[] = (utterances ?? [])
+      .filter((u) => typeof u.start === 'number' && typeof u.end === 'number' && u.transcript)
+      .map((u) => ({ startSec: u.start as number, endSec: u.end as number, text: u.transcript as string }))
+
+    if (segments.length === 0) {
+      return c.json({ error: 'Deepgram returned no transcript for this video' }, 502)
+    }
+
+    const transcript: VideoTranscript = {
+      videoId: id,
+      segments,
+      model: 'nova-3',
+      createdAt: new Date().toISOString(),
+    }
+    await transcriptsCol.replaceOne({ _id: id }, transcript, { upsert: true })
+    return c.json(transcript)
+  } catch (err) {
+    console.error('Deepgram transcription error:', err)
+    return c.json(
+      {
+        error:
+          'Deepgram request failed or timed out. Check internet connection, API key, or set MOCK_DEEPGRAM=true for local demo testing.',
+      },
+      502,
+    )
+  }
+})
+
+// GET /api/videos/:id/transcript — return a previously generated transcript.
+videosRoute.get('/:id/transcript', async (c) => {
+  const id = c.req.param('id')
+  if (!toObjectId(id)) return c.json({ error: 'Invalid video id' }, 400)
+
+  const transcriptsCol = await getTranscriptsCollection()
+  const doc = await transcriptsCol.findOne({ _id: id })
+  if (!doc) {
+    return c.json({ error: 'No transcript exists yet for this video' }, 404)
+  }
+
+  const { _id: _drop, ...transcript } = doc
+  return c.json(transcript satisfies VideoTranscript)
+})
+
 // DELETE /api/videos/:id — remove a video and ALL of its notes from Mongo
 // (the GridFS file bytes + every note with this videoId). Idempotent: a
 // missing file is treated as already-deleted.
@@ -162,9 +260,12 @@ videosRoute.delete('/:id', async (c) => {
   const _id = toObjectId(id)
   if (!_id) return c.json({ error: 'Invalid video id' }, 400)
 
-  // Remove the notes first so we never leave orphaned notes behind.
+  // Remove the notes and transcript first so we never leave orphaned data behind.
   const notesCol = await getNotesCollection()
   const { deletedCount } = await notesCol.deleteMany({ videoId: id })
+
+  const transcriptsCol = await getTranscriptsCollection()
+  await transcriptsCol.deleteOne({ _id: id })
 
   // Then drop the GridFS file (chunks + files doc). delete() throws if the
   // file is already gone — treat that as success so the call is idempotent.
