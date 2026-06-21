@@ -1,6 +1,6 @@
-# Vid-Mark
+# Vid-Scribe
 
-A web app that lets users take cropped screenshots from YouTube videos, ask a question about them, and receive plain-language AI explanations powered by Claude.
+An interactive study notebook and video lecture annotation web app that allows users to take cropped screenshots from YouTube videos, annotate lecture content, ask questions about specific concepts, diagrams, or images, and receive plain-language AI explanations powered by Claude.
 
 ## Project Structure
 
