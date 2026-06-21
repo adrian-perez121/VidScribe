@@ -1,110 +1,106 @@
-# Vid-Scribe
+# Vidscribe
 
-An interactive study notebook and video lecture annotation web app that allows users to take cropped screenshots from YouTube videos, annotate lecture content, ask questions about specific concepts, diagrams, or images, and receive plain-language AI explanations powered by Claude.
+A video annotation tool that lets you take notes on video lectures and automatically research concepts from the transcript using live web sources. Notes are timestamped to the exact moment in the video, giving you a study notebook that remembers where every idea came from.
 
-## Project Structure
+## Features
 
-```
-packages/
-  server/   — Hono + TypeScript API server
-  web/      — React frontend
-  shared/   — Shared TypeScript types
-```
+**Text notes** — write a note at any playback position; the timestamp is saved automatically.
 
-## Prerequisites
+**Voice notes** — record a quick observation via microphone; Deepgram transcribes it and the text is saved as a note.
 
-- Node.js 18+
-- A running Postgres database
-- An Anthropic API key (get one at https://console.anthropic.com/)
+**Visual notes** — draw a crop box over any frame; Claude explains what is in that region in plain language.
+
+**AI research** — highlight a chunk of transcript; the server distills keywords, searches the web via Browserbase, and returns a teacher-style summary plus the source links. The summary is explicitly tied back to what is on screen.
+
+**Video library** — upload MP4 or WebM files to a MongoDB GridFS store. The dashboard shows thumbnails (captured in-browser before upload), durations, and per-video note counts. Videos can be deleted and their notes are removed from both the database and localStorage.
+
+**Demo mode** — a bundled lecture video works with no credentials at all (notes go to localStorage only).
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19 + Vite + TypeScript + Tailwind CSS |
+| Backend | Hono on Node.js (run with tsx, no compile step) |
+| Video storage | MongoDB Atlas + GridFS (streaming, range-request aware) |
+| Notes | localStorage (live store) + MongoDB (mirrored for persistence) |
+| Speech-to-text | Deepgram Nova |
+| Visual explain | Anthropic Claude (multimodal) |
+| Web research | Browserbase + Stagehand + Gemini |
+
+## Requirements
+
+- Node.js 20+ (22 recommended)
+- MongoDB Atlas cluster (or any MongoDB 6+ instance)
+- API keys: Anthropic, Deepgram, Browserbase, Gemini (see below)
 
 ## Setup
 
-1. Install dependencies:
+```sh
+npm install
+cp packages/server/.env.sample packages/server/.env
+```
 
-   ```sh
-   npm install
-   ```
+Fill in `packages/server/.env`:
 
-2. Create `packages/server/.env` from the sample:
+```
+# MongoDB
+MONGODB_URI="mongodb+srv://..."
+MONGODB_USERNAME="..."
+MONGODB_PASSWORD="..."
+MONGODB_DB="vidmark"
 
-   ```sh
-   cp packages/server/.env.sample packages/server/.env
-   ```
+# AI services
+ANTHROPIC_API_KEY="sk-ant-..."
+DEEPGRAM_API_KEY="..."
+GEMINI_API_KEY="..."
+BROWSERBASE_API_KEY="..."
+```
 
-3. Fill in the values in `packages/server/.env`:
+If you want to run without external API keys during a demo, set the mock flags:
 
-   ```
-   DATABASE_URL="postgres://..."
-   DIRECT_URL="postgres://..."
-   ANTHROPIC_API_KEY="sk-ant-..."
-   ```
+```
+MOCK_DEEPGRAM="true"       # voice notes return a canned transcript
+MOCK_BROWSERBASE="true"    # research returns a placeholder summary
+```
 
-4. Run database migrations:
-
-   ```sh
-   npx prisma migrate deploy --schema=packages/server/prisma/schema.prisma
-   ```
-
-## Development
-
-Start both the API server (port 3000) and the Vite dev server (port 5173) together:
+## Running
 
 ```sh
+# Development (hot reload on both frontend :5173 and server :3000)
 npm run dev
-```
 
-Or start them separately:
-
-```sh
-npm run dev:server   # API only
-npm run dev:web      # Frontend only
-```
-
-## API Endpoints
-
-### `GET /api/health`
-
-Returns server status.
-
-```json
-{ "status": "ok", "time": "2026-06-20T00:00:00.000Z" }
-```
-
-### `POST /api/explain`
-
-Accepts a cropped screenshot and a question. Returns a plain-language explanation from Claude.
-
-**Request** — `multipart/form-data`:
-| Field    | Type   | Required | Description                  |
-|----------|--------|----------|------------------------------|
-| `image`  | File   | Yes      | PNG screenshot               |
-| `prompt` | String | Yes      | The user's question          |
-
-**Success response** (`200`):
-```json
-{ "explanation": "..." }
-```
-
-**Error responses**:
-| Status | Meaning                                    |
-|--------|--------------------------------------------|
-| `400`  | Missing field or image rejected by model   |
-| `429`  | Claude rate limit hit — retry shortly      |
-| `500`  | Unexpected server error                    |
-
-**Example with curl:**
-
-```sh
-curl -X POST http://localhost:3000/api/explain \
-  -F "image=@/path/to/screenshot.png" \
-  -F "prompt=What does this graph show?"
-```
-
-## Build
-
-```sh
+# Production (build then serve everything from :3000)
 npm run build
+npm run start
 ```
+
+In development the Vite dev server proxies `/api` to the Hono server, so there is no CORS to configure. In production the Hono server serves the built frontend and the API from the same origin.
+
+## Project layout
+
+```
+packages/
+  web/      React frontend (src/pages, src/components, src/lib)
+  server/   Hono API (src/routes, lib/)
+  shared/   TypeScript types imported by both (no build step)
+```
+
+## API overview
+
+| Method | Path | Description |
+|---|---|---|
+| GET | /api/health | Server status |
+| POST | /api/explain | Explain a cropped video frame (multipart: image + prompt) |
+| POST | /api/deepgram/voice-note | Transcribe audio (multipart: audio blob) |
+| POST | /api/research | Research a transcript chunk; returns keywords + summary + links |
+| GET | /api/videos | List all uploaded videos (metadata + thumbnails) |
+| GET | /api/videos/:id | Video metadata + its notes |
+| GET | /api/videos/:id/stream | Range-aware video stream (for `<video>` playback) |
+| POST | /api/videos | Upload a video (multipart: title + thumbnail + file) |
+| DELETE | /api/videos/:id | Delete video and all associated notes |
+| POST | /api/notes | Upsert a note |
+| DELETE | /api/notes/:id | Delete a note |
 
 ## License
 
