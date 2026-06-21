@@ -22,6 +22,38 @@ function formatTimestamp(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
+/** How close currentTime must already be to the target to skip seeking (seconds). */
+const SEEK_EPSILON = 0.05
+/** Max time to wait for a seek to finish before giving up and capturing anyway. */
+const SEEK_TIMEOUT_MS = 2000
+
+/**
+ * Seek the video to timestampSec and resolve only once the browser has
+ * actually rendered that frame (after the "seeked" event + one animation
+ * frame), so a canvas capture right after this resolves gets the right frame.
+ */
+function waitForVideoSeek(video: HTMLVideoElement, timestampSec: number): Promise<void> {
+  if (Math.abs(video.currentTime - timestampSec) < SEEK_EPSILON) {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      video.removeEventListener('seeked', onSeeked)
+      clearTimeout(timeoutId)
+      requestAnimationFrame(() => resolve())
+    }
+    const onSeeked = () => finish()
+    const timeoutId = setTimeout(finish, SEEK_TIMEOUT_MS)
+
+    video.addEventListener('seeked', onSeeked)
+    video.currentTime = timestampSec
+  })
+}
+
 /** Draw the video's current frame to a canvas and return it as both a Blob and a data URL. */
 function captureVideoFrame(video: HTMLVideoElement): { blob: Blob; dataUrl: string } | null {
   const canvas = document.createElement('canvas')
@@ -101,7 +133,6 @@ function Home() {
     const video = videoRef.current
     if (!video) return
 
-    video.currentTime = note.timestampSec
     video.pause()
 
     setLensErrors((prev) => {
@@ -112,6 +143,7 @@ function Home() {
     setLensLoadingId(note.id)
 
     try {
+      await waitForVideoSeek(video, note.timestampSec)
       const frame = captureVideoFrame(video)
       if (!frame) throw new Error('Could not capture video frame')
 

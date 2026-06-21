@@ -3,14 +3,23 @@ import Anthropic from '@anthropic-ai/sdk'
 import sharp from 'sharp'
 import { Hono } from 'hono'
 
-const client = new Anthropic()
-
 export const explainRoute = new Hono()
 
 // TODO: Add authentication middleware here
 // TODO: Add rate limiting middleware here
 
 explainRoute.post('/', async (c) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return c.json(
+      {
+        error:
+          'Missing ANTHROPIC_API_KEY. Check packages/server/.env or set MOCK_AI=true for local testing.',
+      },
+      500,
+    )
+  }
+  const client = new Anthropic()
+
   const body = await c.req.parseBody()
 
   const imageFile = body['image']

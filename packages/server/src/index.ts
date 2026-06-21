@@ -1,8 +1,11 @@
+import 'dotenv/config'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { api } from './routes/api.js'
+
+console.log(`ANTHROPIC_API_KEY set: ${Boolean(process.env.ANTHROPIC_API_KEY)}`)
 
 const app = new Hono()
 
