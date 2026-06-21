@@ -22,12 +22,29 @@ function formatTimestamp(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
+/** Draw the video's current frame to a canvas and return it as both a Blob and a data URL. */
+function captureVideoFrame(video: HTMLVideoElement): { blob: Blob; dataUrl: string } | null {
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx || canvas.width === 0 || canvas.height === 0) return null
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  const dataUrl = canvas.toDataURL('image/png')
+  const byteString = atob(dataUrl.split(',')[1])
+  const bytes = new Uint8Array(byteString.length)
+  for (let i = 0; i < byteString.length; i++) bytes[i] = byteString.charCodeAt(i)
+  return { blob: new Blob([bytes], { type: 'image/png' }), dataUrl }
+}
+
 function Home() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [notes, setNotes] = useState<VidscribeNote[]>(loadNotes)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [draftTimestamp, setDraftTimestamp] = useState(0)
   const [draftText, setDraftText] = useState('')
+  const [lensLoadingId, setLensLoadingId] = useState<string | null>(null)
+  const [lensErrors, setLensErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
@@ -78,6 +95,69 @@ function Home() {
     if (!video) return
     video.currentTime = note.timestampSec
     video.play().catch(() => {})
+  }
+
+  async function handleLensClick(note: VidscribeNote) {
+    const video = videoRef.current
+    if (!video) return
+
+    video.currentTime = note.timestampSec
+    video.pause()
+
+    setLensErrors((prev) => {
+      const rest = { ...prev }
+      delete rest[note.id]
+      return rest
+    })
+    setLensLoadingId(note.id)
+
+    try {
+      const frame = captureVideoFrame(video)
+      if (!frame) throw new Error('Could not capture video frame')
+
+      const notesBefore = notes
+        .filter((n) => n.timestampSec < note.timestampSec)
+        .map((n) => n.text)
+        .join('\n')
+      const notesAfter = notes
+        .filter((n) => n.timestampSec > note.timestampSec)
+        .map((n) => n.text)
+        .join('\n')
+
+      const formData = new FormData()
+      formData.append('image', frame.blob, 'frame.png')
+      formData.append('prompt', note.text)
+      if (notesBefore) formData.append('notes_before', notesBefore)
+      if (notesAfter) formData.append('notes_after', notesAfter)
+
+      const res = await fetch('/api/explain', { method: 'POST', body: formData })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Lens request failed (${res.status})`)
+      }
+      if (!data || typeof data.explanation !== 'string') {
+        throw new Error('Lens response was missing an explanation')
+      }
+
+      const visualNote: VidscribeNote = {
+        id: crypto.randomUUID(),
+        videoId: VIDEO_ID,
+        timestampSec: note.timestampSec,
+        kind: 'visual',
+        parentNoteId: note.id,
+        text: 'Visual explanation',
+        aiExplanation: data.explanation,
+        imageDataUrl: frame.dataUrl,
+        createdAt: new Date().toISOString(),
+      }
+      setNotes((prev) => [...prev, visualNote].sort((a, b) => a.timestampSec - b.timestampSec))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Lens request failed'
+      setLensErrors((prev) => ({ ...prev, [note.id]: message }))
+    } finally {
+      setLensLoadingId(null)
+    }
   }
 
   return (
@@ -174,22 +254,54 @@ function Home() {
           ) : (
             <ul className="flex flex-col gap-2 overflow-y-auto">
               {notes.map((note) => (
-                <li key={note.id}>
+                <li
+                  key={note.id}
+                  className="w-full rounded-lg border border-gray-800 bg-gray-900 p-3 hover:border-indigo-500"
+                >
                   <button
                     type="button"
                     onClick={() => handleNoteClick(note)}
-                    className="w-full rounded-lg border border-gray-800 bg-gray-900 p-3 text-left hover:border-indigo-500"
+                    className="w-full text-left"
                   >
                     <div className="flex items-center gap-2">
                       <span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-indigo-300">
                         {formatTimestamp(note.timestampSec)}
                       </span>
                       <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs text-indigo-300">
-                        Text
+                        {note.kind === 'visual' ? 'Visual' : 'Text'}
                       </span>
                     </div>
-                    <p className="mt-2 text-sm text-gray-200">{note.text}</p>
+                    {note.kind === 'visual' ? (
+                      <>
+                        {note.imageDataUrl && (
+                          <img
+                            src={note.imageDataUrl}
+                            alt="Captured video frame"
+                            className="mt-2 max-h-32 w-full rounded object-cover"
+                          />
+                        )}
+                        <p className="mt-2 text-sm text-gray-200">{note.aiExplanation}</p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-gray-200">{note.text}</p>
+                    )}
                   </button>
+
+                  {note.kind === 'text' && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLensClick(note)}
+                        disabled={lensLoadingId === note.id}
+                        className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {lensLoadingId === note.id ? 'Explaining…' : 'Explain visual'}
+                      </button>
+                      {lensErrors[note.id] && (
+                        <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
