@@ -38,6 +38,9 @@ export async function ensureIndex() {
         video_id: { type: SCHEMA_FIELD_TYPE.TAG },
         video_title: { type: SCHEMA_FIELD_TYPE.TEXT },
         source: { type: SCHEMA_FIELD_TYPE.TAG },
+        // Point in the video this chunk maps to (transcript chunk start, or the
+        // moment a note was taken). -1 when there's no meaningful timestamp.
+        start_sec: { type: SCHEMA_FIELD_TYPE.NUMERIC },
         text: { type: SCHEMA_FIELD_TYPE.TEXT },
         embedding: {
           type: SCHEMA_FIELD_TYPE.VECTOR,
