@@ -5,6 +5,7 @@ import type {
   VidscribeNote,
   ChatResponse,
   TranscriptWindow,
+  VideoTranscript,
 } from '@vid-mark/shared'
 
 // Thin fetch wrappers around the backend video/notes endpoints. Notes calls are
@@ -129,6 +130,26 @@ export async function getTranscriptWindow(
     throw new Error(data?.error ?? `Transcript window failed (${res.status})`)
   }
   return (await res.json()) as TranscriptWindow
+}
+
+/** Fetch a video's stored transcript. Throws (404) if none exists yet. */
+export async function getTranscript(videoId: string): Promise<VideoTranscript> {
+  const res = await fetch(`/api/videos/${videoId}/transcript`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to load transcript (${res.status})`)
+  }
+  return (await res.json()) as VideoTranscript
+}
+
+/** Transcribe a video via Deepgram (or a mock, with MOCK_DEEPGRAM=true server-side). */
+export async function generateTranscript(videoId: string): Promise<VideoTranscript> {
+  const res = await fetch(`/api/videos/${videoId}/transcript`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to generate transcript (${res.status})`)
+  }
+  return (await res.json()) as VideoTranscript
 }
 
 /**

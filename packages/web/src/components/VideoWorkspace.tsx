@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import type { VidscribeNote } from '@vid-mark/shared'
-import { getVideo, saveNote, deleteNote, getTranscriptWindow } from '../lib/api'
+import type { VidscribeNote, VideoTranscript } from '@vid-mark/shared'
+import {
+  getVideo,
+  saveNote,
+  deleteNote,
+  getTranscriptWindow,
+  getTranscript,
+  generateTranscript,
+} from '../lib/api'
 
 // The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
 // only) and uploaded videos (localStorage + database).
@@ -153,6 +160,12 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
   const [isVisualComposerOpen, setIsVisualComposerOpen] = useState(false)
   const [visualDraftTimestamp, setVisualDraftTimestamp] = useState(0)
   const [visualDraftText, setVisualDraftText] = useState('')
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false)
+  const [transcript, setTranscript] = useState<VideoTranscript | null>(null)
+  const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [transcriptGenerating, setTranscriptGenerating] = useState(false)
+  const [transcriptError, setTranscriptError] = useState<string | null>(null)
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null)
 
   // Notes for THIS video only (the localStorage array holds every video's notes).
   const videoNotes = notes
@@ -177,6 +190,70 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       cancelled = true
     }
   }, [persist, videoId])
+
+  // Transcript fetch is isolated from the notes hydrate above: a slow/failed
+  // transcript load should never delay or break notes loading. Only fetched
+  // for DB-backed (uploaded) videos — the local demo has no real videoId.
+  useEffect(() => {
+    if (!persist) return
+    let cancelled = false
+    setTranscriptLoading(true)
+    setTranscriptError(null)
+    getTranscript(videoId)
+      .then((t) => {
+        if (!cancelled) setTranscript(t)
+      })
+      .catch((err) => {
+        // 404 (no transcript yet) is expected, not an error worth surfacing.
+        if (!cancelled) setTranscript(null)
+        console.error('Could not load transcript:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setTranscriptLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [persist, videoId])
+
+  // Track the active transcript segment as the video plays/seeks.
+  useEffect(() => {
+    if (!persist || !transcript) return
+    const video = videoRef.current
+    if (!video) return
+
+    function handleTimeUpdate() {
+      const t = video!.currentTime
+      const index = transcript!.segments.findIndex(
+        (s) => t >= s.startSec && t <= s.endSec,
+      )
+      setActiveSegmentIndex(index === -1 ? null : index)
+    }
+
+    video.addEventListener('timeupdate', handleTimeUpdate)
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate)
+  }, [persist, transcript])
+
+  function handleSegmentClick(segment: { startSec: number }) {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = segment.startSec
+    video.play().catch(() => {})
+  }
+
+  async function handleGenerateTranscript() {
+    setTranscriptGenerating(true)
+    setTranscriptError(null)
+    try {
+      const t = await generateTranscript(videoId)
+      setTranscript(t)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not generate transcript'
+      setTranscriptError(message)
+    } finally {
+      setTranscriptGenerating(false)
+    }
+  }
 
   /** Mirror a note to the DB when this workspace is DB-backed. Best-effort. */
   function persistNote(note: VidscribeNote) {
@@ -700,6 +777,15 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
           >
             Visual Note
           </button>
+          {persist && (
+            <button
+              type="button"
+              onClick={() => setIsTranscriptOpen((prev) => !prev)}
+              className="rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800"
+            >
+              {isTranscriptOpen ? 'Hide Transcript' : 'Transcript'}
+            </button>
+          )}
           <button
             type="button"
             disabled
@@ -708,6 +794,52 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
             Study Guide · coming soon
           </button>
         </div>
+
+        {persist && isTranscriptOpen && (
+          <div className="flex max-h-64 shrink-0 flex-col rounded-lg border border-gray-800 bg-gray-900 p-3">
+            <p className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Transcript
+            </p>
+
+            {transcriptLoading ? (
+              <p className="text-sm text-gray-500">Loading transcript…</p>
+            ) : transcript && transcript.segments.length > 0 ? (
+              <ul className="flex flex-col gap-1 overflow-y-auto">
+                {transcript.segments.map((segment, index) => (
+                  <li key={`${segment.startSec}-${index}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleSegmentClick(segment)}
+                      className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                        index === activeSegmentIndex
+                          ? 'bg-indigo-950 text-indigo-200'
+                          : 'text-gray-300 hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="mr-2 font-mono text-xs text-indigo-300">
+                        {formatTimestamp(segment.startSec)}
+                      </span>
+                      {segment.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-sm text-gray-500">No transcript yet for this video.</p>
+                <button
+                  type="button"
+                  onClick={handleGenerateTranscript}
+                  disabled={transcriptGenerating}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {transcriptGenerating ? 'Generating…' : 'Generate transcript'}
+                </button>
+                {transcriptError && <p className="text-xs text-red-400">{transcriptError}</p>}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <aside className="flex w-full min-h-0 flex-col gap-3 lg:w-80">
