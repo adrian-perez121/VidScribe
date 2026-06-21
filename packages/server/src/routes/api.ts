@@ -5,7 +5,6 @@ import type {
   ResearchResponse,
 } from '@vid-mark/shared'
 import { researchTopic } from '../../lib/research.js'
-import type { HealthResponse } from '@vid-mark/shared'
 import { explainRoute } from './explain.js'
 
 export const api = new Hono()
