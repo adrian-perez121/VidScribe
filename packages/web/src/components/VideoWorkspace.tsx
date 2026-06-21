@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { VidscribeNote, VideoTranscript } from '@vid-mark/shared'
+import type { VidscribeNote, VideoTranscript, StudyGuide } from '@vid-mark/shared'
 import {
   getVideo,
   saveNote,
@@ -7,6 +7,7 @@ import {
   getTranscriptWindow,
   getTranscript,
   generateTranscript,
+  getStudyGuide,
 } from '../lib/api'
 
 // The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
@@ -178,6 +179,10 @@ function VideoWorkspace({
   const [transcriptGenerating, setTranscriptGenerating] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null)
+  const [isStudyGuideOpen, setIsStudyGuideOpen] = useState(false)
+  const [studyGuide, setStudyGuide] = useState<StudyGuide | null>(null)
+  const [studyGuideLoading, setStudyGuideLoading] = useState(false)
+  const [studyGuideError, setStudyGuideError] = useState<string | null>(null)
 
   // Notes for THIS video only (the localStorage array holds every video's notes).
   const videoNotes = notes
@@ -277,6 +282,20 @@ function VideoWorkspace({
     }
   }
   generateTranscriptRef.current = handleGenerateTranscript
+
+  async function handleGenerateStudyGuide() {
+    setStudyGuideLoading(true)
+    setStudyGuideError(null)
+    try {
+      const guide = await getStudyGuide(videoId)
+      setStudyGuide(guide)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not generate study guide'
+      setStudyGuideError(message)
+    } finally {
+      setStudyGuideLoading(false)
+    }
+  }
 
   /** Mirror a note to the DB when this workspace is DB-backed. Best-effort. */
   function persistNote(note: VidscribeNote) {
@@ -809,13 +828,15 @@ function VideoWorkspace({
               {isTranscriptOpen ? 'Hide Transcript' : 'Transcript'}
             </button>
           )}
-          <button
-            type="button"
-            disabled
-            className="cursor-not-allowed rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-500"
-          >
-            Study Guide · coming soon
-          </button>
+          {persist && (
+            <button
+              type="button"
+              onClick={() => setIsStudyGuideOpen((prev) => !prev)}
+              className="rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800"
+            >
+              {isStudyGuideOpen ? 'Hide Study Guide' : 'Study Guide'}
+            </button>
+          )}
         </div>
 
         {persist && isTranscriptOpen && (
@@ -859,6 +880,53 @@ function VideoWorkspace({
                   {transcriptGenerating ? 'Generating…' : 'Generate transcript'}
                 </button>
                 {transcriptError && <p className="text-xs text-red-400">{transcriptError}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {persist && isStudyGuideOpen && (
+          <div className="flex max-h-64 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-900 p-3">
+            <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Study Guide
+            </p>
+
+            {studyGuideLoading ? (
+              <p className="text-sm text-gray-500">Generating study guide…</p>
+            ) : studyGuide ? (
+              <div className="flex flex-col gap-3">
+                {studyGuide.title && (
+                  <h3 className="text-sm font-semibold text-gray-100">{studyGuide.title}</h3>
+                )}
+                {studyGuide.overview && (
+                  <p className="text-sm text-gray-300">{studyGuide.overview}</p>
+                )}
+                {studyGuide.sections.map((section, index) => (
+                  <div key={`${section.heading}-${index}`}>
+                    <p className="text-sm font-semibold text-gray-200">{section.heading}</p>
+                    <ul className="mt-1 list-inside list-disc text-sm text-gray-300">
+                      {section.points.map((point, pointIndex) => (
+                        <li key={pointIndex}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-sm text-gray-500">
+                  {studyGuideError
+                    ? studyGuideError
+                    : 'No study material yet. Add notes, transcript, Lens explanations, or research first.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleGenerateStudyGuide}
+                  disabled={studyGuideLoading}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Generate study guide
+                </button>
               </div>
             )}
           </div>
