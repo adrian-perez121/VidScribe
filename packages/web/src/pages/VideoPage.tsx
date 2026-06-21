@@ -4,14 +4,9 @@ import AppHeader from '../components/AppHeader'
 import VideoWorkspace from '../components/VideoWorkspace'
 import { getVideo } from '../lib/api'
 
-// An uploaded video's page: the same workspace as the demo, but the video
-// streams from GridFS and notes are mirrored to / hydrated from the database.
-
 function VideoPage() {
   const { id = '' } = useParams()
   const location = useLocation()
-  // Set once by UploadButton right after a successful upload — tells
-  // VideoWorkspace to kick off transcript generation in the background.
   const autoGenerateTranscript =
     (location.state as { autoGenerateTranscript?: boolean } | null)?.autoGenerateTranscript === true
   const [title, setTitle] = useState('')
@@ -33,10 +28,10 @@ function VideoPage() {
   }, [id])
 
   return (
-    <main className="flex h-screen flex-col bg-gray-950 text-gray-100">
+    <main className="flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AppHeader />
       {error ? (
-        <div className="p-6 text-sm text-red-400">{error}</div>
+        <div className="p-6 text-sm text-red-500 dark:text-red-400">{error}</div>
       ) : (
         <VideoWorkspace
           key={id}

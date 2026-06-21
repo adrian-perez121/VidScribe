@@ -7,13 +7,9 @@ import {
 } from '../lib/thumbnail'
 import { uploadVideo } from '../lib/api'
 
-// The "+" button in the header. Lets the user pick an MP4/WebM from their
-// computer, captures a thumbnail in the browser, uploads the video to the
-// server (GridFS) with a progress bar, and navigates to the new video's page.
-
 type Status =
   | { kind: 'idle' }
-  | { kind: 'preparing' } // capturing thumbnail
+  | { kind: 'preparing' }
   | { kind: 'uploading'; percent: number }
 
 function UploadButton() {
@@ -26,7 +22,7 @@ function UploadButton() {
 
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    e.target.value = '' // let the same file be re-selected later
+    e.target.value = ''
     if (!file) return
 
     setError(null)
@@ -47,8 +43,6 @@ function UploadButton() {
         durationSec,
         onProgress: (percent) => setStatus({ kind: 'uploading', percent }),
       })
-      // The video page's transcript panel reads this flag once to kick off
-      // background generation automatically — see VideoPage/VideoWorkspace.
       navigate(`/videos/${video.id}`, { state: { autoGenerateTranscript: true } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -77,18 +71,17 @@ function UploadButton() {
         {busy ? <span className="text-xs font-normal">…</span> : '+'}
       </button>
 
-      {/* Progress / status popover */}
       {busy && (
-        <div className="absolute right-0 top-11 z-10 w-56 rounded-md border border-gray-700 bg-gray-900 p-3 shadow-lg">
+        <div className="absolute right-0 top-11 z-10 w-56 rounded-md border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {status.kind === 'preparing' ? (
-            <p className="text-xs text-gray-300">Preparing video…</p>
+            <p className="text-xs text-gray-600 dark:text-gray-300">Preparing video…</p>
           ) : (
             <>
-              <div className="mb-1 flex justify-between text-xs text-gray-300">
+              <div className="mb-1 flex justify-between text-xs text-gray-600 dark:text-gray-300">
                 <span>Uploading…</span>
                 <span>{status.percent}%</span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
                 <div
                   className="h-full rounded-full bg-indigo-500 transition-[width] duration-150"
                   style={{ width: `${status.percent}%` }}
@@ -100,7 +93,7 @@ function UploadButton() {
       )}
 
       {error && (
-        <p className="absolute right-0 top-11 z-10 w-56 rounded-md border border-red-900 bg-red-950 p-2 text-xs text-red-300 shadow-lg">
+        <p className="absolute right-0 top-11 z-10 w-56 rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-500 shadow-lg dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {error}
         </p>
       )}

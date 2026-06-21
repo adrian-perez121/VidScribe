@@ -3,12 +3,6 @@ import { Link, useMatch } from 'react-router-dom'
 import type { ChatSource } from '@vid-mark/shared'
 import { sendChat, getVideo } from '../lib/api'
 
-// Floating study-chatbot widget, available on every page. Asks POST /api/chat,
-// which searches across the student's notes/research/lens explanations and
-// answers with Claude, returning the video(s) the answer came from as `sources`.
-// The conversation is threaded with a session id persisted in localStorage so
-// follow-up questions ("explain that more simply") keep context.
-
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -34,13 +28,11 @@ function ChatWidget() {
   const sessionId = useRef<string>(getSessionId())
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  // When we're on a video's page, offer to scope the chat to just that video.
   const videoMatch = useMatch('/videos/:id')
   const videoId = videoMatch?.params.id ?? ''
   const [videoTitle, setVideoTitle] = useState('')
   const [scopeToVideo, setScopeToVideo] = useState(true)
 
-  // Reset the scope and pull the title whenever the current video changes.
   useEffect(() => {
     if (!videoId) {
       setVideoTitle('')
@@ -52,15 +44,12 @@ function ChatWidget() {
       .then((v) => {
         if (!cancelled) setVideoTitle(v.title)
       })
-      .catch(() => {
-        /* title is cosmetic — ignore */
-      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [videoId])
 
-  // Keep the latest message in view.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, sending])
@@ -94,7 +83,6 @@ function ChatWidget() {
 
   return (
     <>
-      {/* Launcher */}
       <button
         type="button"
         aria-label={open ? 'Close study chat' : 'Open study chat'}
@@ -104,21 +92,19 @@ function ChatWidget() {
         {open ? '✕' : '💬'}
       </button>
 
-      {/* Panel */}
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[32rem] w-[22rem] flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900 shadow-2xl sm:w-96">
-          <div className="shrink-0 border-b border-gray-800 px-4 py-3">
-            <p className="text-sm font-semibold text-gray-100">Study chat</p>
-            <p className="text-xs text-gray-400">Ask about anything in your videos</p>
+        <div className="fixed bottom-24 right-5 z-50 flex h-[32rem] w-[22rem] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:w-96">
+          <div className="shrink-0 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Study chat</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Ask about anything in your videos</p>
           </div>
 
-          {/* On a video page: scope toggle (this video vs. everything). */}
           {videoId && (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-800 bg-gray-950/60 px-4 py-2 text-xs">
-              <span className="truncate text-gray-400">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs dark:border-gray-800 dark:bg-gray-950/60">
+              <span className="truncate text-gray-500 dark:text-gray-400">
                 {scopeToVideo ? (
                   <>
-                    Asking about <span className="text-gray-200">{videoTitle || 'this video'}</span>
+                    Asking about <span className="text-gray-700 dark:text-gray-200">{videoTitle || 'this video'}</span>
                   </>
                 ) : (
                   'Asking across all videos'
@@ -127,7 +113,7 @@ function ChatWidget() {
               <button
                 type="button"
                 onClick={() => setScopeToVideo((s) => !s)}
-                className="shrink-0 rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:bg-gray-800"
+                className="shrink-0 rounded border border-gray-300 px-2 py-0.5 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 {scopeToVideo ? 'All videos' : 'This video'}
               </button>
@@ -136,7 +122,7 @@ function ChatWidget() {
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
-              <p className="mt-8 text-center text-sm text-gray-500">
+              <p className="mt-8 text-center text-sm text-gray-400 dark:text-gray-500">
                 Ask a question about your notes and lectures to get started.
               </p>
             )}
@@ -148,19 +134,19 @@ function ChatWidget() {
                     'max-w-[85%] rounded-lg px-3 py-2 text-sm ' +
                     (m.role === 'user'
                       ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-800 text-gray-100')
+                      : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100')
                   }
                 >
                   <p className="whitespace-pre-wrap">{m.content}</p>
 
                   {m.sources && m.sources.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5 border-t border-gray-700 pt-2">
+                    <div className="mt-2 flex flex-wrap gap-1.5 border-t border-gray-200 pt-2 dark:border-gray-700">
                       {m.sources.map((s) => (
                         <Link
                           key={s.video_id}
                           to={`/videos/${s.video_id}`}
                           onClick={() => setOpen(false)}
-                          className="rounded bg-gray-900 px-1.5 py-0.5 text-xs text-indigo-300 hover:text-indigo-200"
+                          className="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-indigo-600 hover:text-indigo-500 dark:bg-gray-900 dark:text-indigo-300 dark:hover:text-indigo-200"
                           title={s.video_title}
                         >
                           ▶ {s.video_title}
@@ -174,12 +160,14 @@ function ChatWidget() {
 
             {sending && (
               <div className="flex justify-start">
-                <div className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-400">Thinking…</div>
+                <div className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  Thinking…
+                </div>
               </div>
             )}
           </div>
 
-          <div className="shrink-0 border-t border-gray-800 p-2">
+          <div className="shrink-0 border-t border-gray-200 p-2 dark:border-gray-800">
             <div className="flex items-end gap-2">
               <textarea
                 value={input}
@@ -187,7 +175,7 @@ function ChatWidget() {
                 onKeyDown={onKeyDown}
                 rows={1}
                 placeholder="Ask a question…"
-                className="max-h-28 flex-1 resize-none rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+                className="max-h-28 flex-1 resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder-gray-500"
               />
               <button
                 type="button"

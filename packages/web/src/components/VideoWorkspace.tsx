@@ -656,11 +656,11 @@ function VideoWorkspace({
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6 lg:flex-row lg:overflow-hidden">
       <section className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
         {title && (
-          <h2 className="shrink-0 truncate text-lg font-semibold text-gray-100">{title}</h2>
+          <h2 className="shrink-0 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
         )}
         <div
           ref={videoBoxRef}
-          className="relative h-[40vh] overflow-hidden rounded-lg border border-gray-800 bg-black lg:h-auto lg:min-h-0 lg:flex-1"
+          className="relative h-[40vh] overflow-hidden rounded-lg border border-gray-200 bg-black lg:h-auto lg:min-h-0 lg:flex-1 dark:border-gray-800"
         >
           <video
             ref={videoRef}
@@ -676,7 +676,7 @@ function VideoWorkspace({
               onPointerMove={handleSelectionPointerMove}
               onPointerUp={handleSelectionPointerUp}
             >
-              <p className="absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded bg-gray-950/80 px-3 py-1 text-xs text-gray-100">
+              <p className="absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded bg-black/70 px-3 py-1 text-xs text-gray-100">
                 Drag over the part of the video you want explained
               </p>
               {selectionRect && (
@@ -695,8 +695,8 @@ function VideoWorkspace({
         </div>
 
         {isVisualComposerOpen && (
-          <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <p className="mb-2 text-sm text-gray-400">
+          <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+            <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
               Visual note at {formatTimestamp(visualDraftTimestamp)}
             </p>
             <textarea
@@ -705,13 +705,13 @@ function VideoWorkspace({
               onChange={(e) => setVisualDraftText(e.target.value)}
               placeholder={DEFAULT_VISUAL_PROMPT}
               rows={3}
-              className="w-full rounded-md border border-gray-700 bg-gray-950 p-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={handleVisualComposerCancel}
-                className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -727,15 +727,15 @@ function VideoWorkspace({
         )}
 
         {lensNote && (
-          <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
-            <p className="text-xs text-gray-400">
+          <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               {isSelectionValid ? 'Selection ready.' : 'Drag a larger rectangle over the video.'}
             </p>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleCancelSelection}
-                className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -752,8 +752,8 @@ function VideoWorkspace({
         )}
 
         {voiceState === 'recording' && (
-          <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
-            <p className="text-sm text-red-400">● Recording voice note...</p>
+          <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm text-red-500 dark:text-red-400">● Recording voice note...</p>
             <button
               type="button"
               onClick={handleStopRecording}
@@ -765,13 +765,13 @@ function VideoWorkspace({
         )}
 
         {voiceState === 'saving' && (
-          <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-3 text-sm text-gray-400">
+          <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
             Saving voice note…
           </div>
         )}
 
         {voiceState === 'error' && voiceError && (
-          <div className="shrink-0 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">
+          <div className="shrink-0 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-500 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
             {voiceError}
           </div>
         )}
@@ -804,7 +804,7 @@ function VideoWorkspace({
             <button
               type="button"
               onClick={() => setIsTranscriptOpen((prev) => !prev)}
-              className="rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               {isTranscriptOpen ? 'Hide Transcript' : 'Transcript'}
             </button>
@@ -812,20 +812,20 @@ function VideoWorkspace({
           <button
             type="button"
             disabled
-            className="cursor-not-allowed rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-500"
+            className="cursor-not-allowed rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-400 dark:border-gray-800 dark:text-gray-500"
           >
             Study Guide · coming soon
           </button>
         </div>
 
         {persist && isTranscriptOpen && (
-          <div className="flex max-h-64 shrink-0 flex-col rounded-lg border border-gray-800 bg-gray-900 p-3">
-            <p className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <div className="flex max-h-64 shrink-0 flex-col rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+            <p className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Transcript
             </p>
 
             {transcriptLoading ? (
-              <p className="text-sm text-gray-500">Loading transcript…</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">Loading transcript…</p>
             ) : transcript && transcript.segments.length > 0 ? (
               <ul className="flex flex-col gap-1 overflow-y-auto">
                 {transcript.segments.map((segment, index) => (
@@ -835,11 +835,11 @@ function VideoWorkspace({
                       onClick={() => handleSegmentClick(segment)}
                       className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
                         index === activeSegmentIndex
-                          ? 'bg-indigo-950 text-indigo-200'
-                          : 'text-gray-300 hover:bg-gray-800'
+                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200'
+                          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                       }`}
                     >
-                      <span className="mr-2 font-mono text-xs text-indigo-300">
+                      <span className="mr-2 font-mono text-xs text-indigo-600 dark:text-indigo-300">
                         {formatTimestamp(segment.startSec)}
                       </span>
                       {segment.text}
@@ -849,7 +849,7 @@ function VideoWorkspace({
               </ul>
             ) : (
               <div className="flex flex-col items-start gap-2">
-                <p className="text-sm text-gray-500">No transcript yet for this video.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No transcript yet for this video.</p>
                 <button
                   type="button"
                   onClick={handleGenerateTranscript}
@@ -858,7 +858,7 @@ function VideoWorkspace({
                 >
                   {transcriptGenerating ? 'Generating…' : 'Generate transcript'}
                 </button>
-                {transcriptError && <p className="text-xs text-red-400">{transcriptError}</p>}
+                {transcriptError && <p className="text-xs text-red-500 dark:text-red-400">{transcriptError}</p>}
               </div>
             )}
           </div>
@@ -866,13 +866,13 @@ function VideoWorkspace({
       </section>
 
       <aside className="flex w-full min-h-0 flex-col gap-3 lg:w-80">
-        <h2 className="shrink-0 text-sm font-semibold uppercase tracking-wide text-gray-400">
+        <h2 className="shrink-0 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           Notes
         </h2>
 
         {isComposerOpen && (
-          <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <p className="mb-2 text-sm text-gray-400">
+          <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+            <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
               Note at {formatTimestamp(draftTimestamp)}
             </p>
             <textarea
@@ -881,13 +881,13 @@ function VideoWorkspace({
               onChange={(e) => setDraftText(e.target.value)}
               placeholder="Add a note for this moment..."
               rows={3}
-              className="w-full rounded-md border border-gray-700 bg-gray-950 p-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -903,7 +903,7 @@ function VideoWorkspace({
         )}
 
         {videoNotes.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-gray-800 p-6 text-center text-sm text-gray-500">
+          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400 dark:border-gray-800 dark:text-gray-500">
             No notes yet. Click Text Note to mark this moment.
           </div>
         ) : (
@@ -911,14 +911,14 @@ function VideoWorkspace({
             {videoNotes.map((note) => (
               <li
                 key={note.id}
-                className="relative w-full rounded-lg border border-gray-800 bg-gray-900 p-3 hover:border-indigo-500"
+                className="relative w-full rounded-lg border border-gray-200 bg-gray-50 p-3 hover:border-indigo-500 dark:border-gray-800 dark:bg-gray-900"
               >
                 <button
                   type="button"
                   onClick={() => handleDeleteNote(note)}
                   aria-label="Delete note"
                   title="Delete note"
-                  className="absolute right-2 top-2 z-10 rounded px-1.5 py-0.5 text-xs text-gray-600 hover:bg-red-950/40 hover:text-red-400"
+                  className="absolute right-2 top-2 z-10 rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-red-100 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                 >
                   ✕
                 </button>
@@ -929,19 +929,19 @@ function VideoWorkspace({
                   className="w-full pr-6 text-left"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-indigo-300">
+                    <span className="rounded bg-gray-200 px-2 py-0.5 text-xs font-mono text-indigo-600 dark:bg-gray-800 dark:text-indigo-300">
                       {formatTimestamp(note.timestampSec)}
                     </span>
-                    <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs text-indigo-300">
+                    <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                       {note.kind === 'voice' ? 'Voice' : 'Text'}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm text-gray-200">{note.text}</p>
+                  <p className="mt-2 text-sm text-gray-800 dark:text-gray-200">{note.text}</p>
                 </button>
 
                 {note.aiExplanation && (
-                  <div className="mt-2 border-t border-gray-800 pt-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-800">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
                       Visual explanation
                     </p>
                     {note.imageDataUrl && (
@@ -951,13 +951,13 @@ function VideoWorkspace({
                         className="mt-2 max-h-32 w-full rounded object-cover"
                       />
                     )}
-                    <p className="mt-2 text-sm text-gray-200">{note.aiExplanation}</p>
+                    <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{note.aiExplanation}</p>
                   </div>
                 )}
 
                 {note.researchSummary && (
-                  <div className="mt-2 border-t border-gray-800 pt-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-800">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
                       Research
                     </p>
                     {note.researchKeywords && note.researchKeywords.length > 0 && (
@@ -965,14 +965,14 @@ function VideoWorkspace({
                         {note.researchKeywords.map((keyword) => (
                           <span
                             key={keyword}
-                            className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300"
+                            className="rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300"
                           >
                             {keyword}
                           </span>
                         ))}
                       </div>
                     )}
-                    <p className="mt-2 text-sm text-gray-200">{note.researchSummary}</p>
+                    <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{note.researchSummary}</p>
                     {note.researchLinks && note.researchLinks.length > 0 && (
                       <ul className="mt-2 flex flex-col gap-1">
                         {note.researchLinks.slice(0, 5).map((link) => (
@@ -981,7 +981,7 @@ function VideoWorkspace({
                               href={link}
                               target="_blank"
                               rel="noreferrer"
-                              className="block truncate text-xs text-indigo-400 hover:underline"
+                              className="block truncate text-xs text-indigo-600 hover:underline dark:text-indigo-400"
                             >
                               {link}
                             </a>
@@ -998,7 +998,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleExplainVisualClick(note)}
                       disabled={lensLoadingId === note.id || !!lensNote}
-                      className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                     >
                       {lensLoadingId === note.id
                         ? 'Explaining…'
@@ -1010,7 +1010,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleResearchClick(note)}
                       disabled={researchLoadingId === note.id}
-                      className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                     >
                       {researchLoadingId === note.id
                         ? 'Researching…'
@@ -1020,10 +1020,10 @@ function VideoWorkspace({
                     </button>
                   </div>
                   {lensErrors[note.id] && (
-                    <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
+                    <p className="mt-1 text-xs text-red-500 dark:text-red-400">{lensErrors[note.id]}</p>
                   )}
                   {researchErrors[note.id] && (
-                    <p className="mt-1 text-xs text-red-400">{researchErrors[note.id]}</p>
+                    <p className="mt-1 text-xs text-red-500 dark:text-red-400">{researchErrors[note.id]}</p>
                   )}
                 </div>
               </li>

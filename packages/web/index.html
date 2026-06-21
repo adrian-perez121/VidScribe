@@ -5,6 +5,13 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vidscribe</title>
+    <!-- Apply theme class before React renders to prevent a flash -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('vidscribe:theme') || 'dark'
+        if (t === 'dark') document.documentElement.classList.add('dark')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

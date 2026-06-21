@@ -4,12 +4,6 @@ import type { VideoSummary } from '@vid-mark/shared'
 import AppHeader from '../components/AppHeader'
 import { listVideos, deleteVideo } from '../lib/api'
 
-// The video dashboard: a grid of thumbnails (never the full videos). Clicking a
-// card opens that video's notes page. The hardcoded demo shows as a static card.
-// Uploaded cards have a "⋮" menu with Delete (removes the video + its notes).
-
-// Notes are stored in this localStorage array (see VideoWorkspace). When a video
-// is deleted we also drop its notes locally so nothing stale lingers.
 const NOTES_STORAGE_KEY = 'vidscribe:notes:v1'
 
 function removeLocalNotesForVideo(videoId: string) {
@@ -38,7 +32,6 @@ interface CardProps {
   title: string
   thumbnailDataUrl: string | null
   badge?: string | null
-  /** When provided, the card shows a ⋮ menu with Delete. */
   onDelete?: () => void
   deleting?: boolean
 }
@@ -47,7 +40,6 @@ function VideoCard({ to, title, thumbnailDataUrl, badge, onDelete, deleting }: C
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
-  // Close the menu on any outside click.
   useEffect(() => {
     if (!menuOpen) return
     function onDocClick(e: MouseEvent) {
@@ -60,23 +52,23 @@ function VideoCard({ to, title, thumbnailDataUrl, badge, onDelete, deleting }: C
   }, [menuOpen])
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-900 hover:border-indigo-500">
+    <div className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50 hover:border-indigo-500 dark:border-gray-800 dark:bg-gray-900">
       <Link to={to} className="flex flex-col">
         <div className="relative aspect-video w-full bg-black">
           {thumbnailDataUrl ? (
             <img src={thumbnailDataUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-gray-600">
+            <div className="flex h-full w-full items-center justify-center text-gray-400 dark:text-gray-600">
               <span className="text-3xl">▶</span>
             </div>
           )}
           {badge && (
-            <span className="absolute bottom-2 right-2 rounded bg-gray-950/80 px-1.5 py-0.5 text-xs font-mono text-gray-200">
+            <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-xs font-mono text-gray-100">
               {badge}
             </span>
           )}
         </div>
-        <p className="truncate px-3 py-2 text-sm font-medium text-gray-200 group-hover:text-white">
+        <p className="truncate px-3 py-2 text-sm font-medium text-gray-800 group-hover:text-gray-900 dark:text-gray-200 dark:group-hover:text-white">
           {title}
         </p>
       </Link>
@@ -89,19 +81,19 @@ function VideoCard({ to, title, thumbnailDataUrl, badge, onDelete, deleting }: C
             title="Options"
             disabled={deleting}
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-950/70 text-gray-200 hover:bg-gray-950 disabled:opacity-50"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-gray-600 hover:bg-white disabled:opacity-50 dark:bg-gray-950/70 dark:text-gray-200 dark:hover:bg-gray-950"
           >
             {deleting ? '…' : '⋮'}
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-8 z-10 w-32 overflow-hidden rounded-md border border-gray-700 bg-gray-900 shadow-lg">
+            <div className="absolute right-0 top-8 z-10 w-32 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
               <button
                 type="button"
                 onClick={() => {
                   setMenuOpen(false)
                   onDelete()
                 }}
-                className="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-gray-800"
+                className="block w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-800"
               >
                 Delete
               </button>
@@ -155,14 +147,20 @@ function Dashboard() {
   }
 
   return (
-    <main className="flex h-screen flex-col bg-gray-950 text-gray-100">
+    <main className="flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AppHeader />
       <div className="flex-1 overflow-y-auto p-6">
         <h2 className="mb-4 text-lg font-semibold">Your videos</h2>
 
-        {status === 'loading' && <p className="text-sm text-gray-400">Loading…</p>}
-        {status === 'error' && <p className="text-sm text-red-400">{error}</p>}
-        {status === 'ready' && error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+        {status === 'loading' && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        )}
+        {status === 'error' && (
+          <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+        )}
+        {status === 'ready' && error && (
+          <p className="mb-4 text-sm text-red-500 dark:text-red-400">{error}</p>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {videos.map((video) => (
@@ -179,7 +177,7 @@ function Dashboard() {
         </div>
 
         {status === 'ready' && videos.length === 0 && (
-          <p className="mt-4 text-sm text-gray-500">
+          <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">
             No uploads yet. Use the + button in the top right to add a video.
           </p>
         )}
