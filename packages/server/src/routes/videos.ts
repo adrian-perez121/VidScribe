@@ -154,6 +154,30 @@ videosRoute.get('/:id', async (c) => {
   return c.json(detail)
 })
 
+// DELETE /api/videos/:id — remove a video and ALL of its notes from Mongo
+// (the GridFS file bytes + every note with this videoId). Idempotent: a
+// missing file is treated as already-deleted.
+videosRoute.delete('/:id', async (c) => {
+  const id = c.req.param('id')
+  const _id = toObjectId(id)
+  if (!_id) return c.json({ error: 'Invalid video id' }, 400)
+
+  // Remove the notes first so we never leave orphaned notes behind.
+  const notesCol = await getNotesCollection()
+  const { deletedCount } = await notesCol.deleteMany({ videoId: id })
+
+  // Then drop the GridFS file (chunks + files doc). delete() throws if the
+  // file is already gone — treat that as success so the call is idempotent.
+  const bucket = await getVideoBucket()
+  try {
+    await bucket.delete(_id)
+  } catch (err) {
+    console.error(`GridFS delete for ${id} (already gone?):`, err)
+  }
+
+  return c.json({ ok: true, deletedNotes: deletedCount })
+})
+
 // POST /api/videos — upload a video. The multipart body is streamed straight
 // into GridFS via busboy so we never buffer the whole (potentially huge) file
 // in memory. Expects fields: title, durationSec, thumbnail (data URL), and the

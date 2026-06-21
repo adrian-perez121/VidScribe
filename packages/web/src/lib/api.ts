@@ -16,10 +16,25 @@ export async function listVideos(): Promise<VideoSummary[]> {
   return data.videos
 }
 
-export async function getVideo(id: string): Promise<VideoDetail> {
-  const res = await fetch(`/api/videos/${id}`)
-  if (!res.ok) throw new Error(`Failed to load video (${res.status})`)
-  return (await res.json()) as VideoDetail
+// A video's detail (metadata + its notes) is fetched once and cached for the
+// session so revisiting a video doesn't refetch its notes over and over. A
+// failed fetch is not cached (so it can be retried).
+const videoDetailCache = new Map<string, Promise<VideoDetail>>()
+
+export function getVideo(id: string): Promise<VideoDetail> {
+  const cached = videoDetailCache.get(id)
+  if (cached) return cached
+
+  const pending = (async () => {
+    const res = await fetch(`/api/videos/${id}`)
+    if (!res.ok) throw new Error(`Failed to load video (${res.status})`)
+    return (await res.json()) as VideoDetail
+  })()
+  pending.catch(() => {
+    if (videoDetailCache.get(id) === pending) videoDetailCache.delete(id)
+  })
+  videoDetailCache.set(id, pending)
+  return pending
 }
 
 export interface UploadVideoInput {
@@ -27,9 +42,11 @@ export interface UploadVideoInput {
   title: string
   thumbnailDataUrl: string
   durationSec?: number
+  /** Called with 0–100 as the file uploads. */
+  onProgress?: (percent: number) => void
 }
 
-export async function uploadVideo(input: UploadVideoInput): Promise<VideoSummary> {
+export function uploadVideo(input: UploadVideoInput): Promise<VideoSummary> {
   const form = new FormData()
   // Append text fields BEFORE the file so the server has them when the file
   // stream opens (the upload is parsed as a stream, in order).
@@ -38,12 +55,43 @@ export async function uploadVideo(input: UploadVideoInput): Promise<VideoSummary
   form.append('thumbnail', input.thumbnailDataUrl)
   form.append('video', input.file)
 
-  const res = await fetch('/api/videos', { method: 'POST', body: form })
-  const data = await res.json().catch(() => null)
+  // Use XHR (not fetch) because it exposes upload progress events.
+  return new Promise<VideoSummary>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/videos')
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && input.onProgress) {
+        input.onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+    xhr.onload = () => {
+      let data: unknown = null
+      try {
+        data = JSON.parse(xhr.responseText)
+      } catch {
+        /* non-JSON response */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as VideoSummary)
+      } else {
+        const message = (data as { error?: string } | null)?.error
+        reject(new Error(message ?? `Upload failed (${xhr.status})`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed (network error)'))
+    xhr.send(form)
+  })
+}
+
+/** Delete a video and all its notes from the database. */
+export async function deleteVideo(id: string): Promise<void> {
+  const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' })
   if (!res.ok) {
-    throw new Error(data?.error ?? `Upload failed (${res.status})`)
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Delete failed (${res.status})`)
   }
-  return data as VideoSummary
+  videoDetailCache.delete(id) // drop any cached detail/notes for this video
 }
 
 /** Mirror a note to the database (create or update). Best-effort. */

@@ -19,6 +19,9 @@ export type VidscribeNote = {
   imageDataUrl?: string
   transcriptContext?: string
   aiExplanation?: string
+  researchKeywords?: string[]
+  researchSummary?: string
+  researchLinks?: string[]
   browserbaseMode?: 'beginner' | 'advanced'
   sources?: {
     title: string

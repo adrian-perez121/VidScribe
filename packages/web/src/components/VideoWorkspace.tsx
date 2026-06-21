@@ -2,17 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import type { VidscribeNote } from '@vid-mark/shared'
 import { getVideo, saveNote } from '../lib/api'
 
-// The video + note-taking workspace. This is the original Home page body,
-// extracted so it can back BOTH the hardcoded demo (localStorage only) and
-// uploaded videos (localStorage AND the database).
+// The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
+// only) and uploaded videos (localStorage + database).
 //
-// In-memory/localStorage storage is UNCHANGED: every note still lives in the
-// single `vidscribe:notes:v1` array, keyed by videoId. When `persist` is set we
-// additionally (a) pull this video's notes from the DB on mount and merge them
-// in, and (b) mirror each created/updated note to the DB. The demo passes
-// persist={false}, so its behavior is identical to before.
+// Notes are stored in one localStorage array (key below) keyed by `videoId`, and
+// ALWAYS displayed filtered to the current `videoId` — so notes never bleed
+// across videos. When `persist` is set we also (a) hydrate this video's notes
+// from the DB once (the fetch is cached in lib/api, so it doesn't refetch over
+// and over), and (b) mirror each created/updated note to the DB.
 
 const STORAGE_KEY = 'vidscribe:notes:v1'
+const DEFAULT_VISUAL_PROMPT = 'Explain this part of the video in simple study-note terms.'
 
 function loadNotes(): VidscribeNote[] {
   try {
@@ -25,10 +25,14 @@ function loadNotes(): VidscribeNote[] {
   }
 }
 
-/** Merge DB notes into the existing set (by id; DB wins), sorted by time. */
-function mergeNotes(existing: VidscribeNote[], incoming: VidscribeNote[]): VidscribeNote[] {
-  const byId = new Map(existing.map((n) => [n.id, n]))
-  for (const note of incoming) byId.set(note.id, note)
+/**
+ * Merge DB notes into the local set (by id), then return sorted by time.
+ * The LOCAL copy wins on conflict — localStorage is the live store for this
+ * browser, so the DB hydrate only fills in notes we don't already have.
+ */
+function mergeNotes(local: VidscribeNote[], incoming: VidscribeNote[]): VidscribeNote[] {
+  const byId = new Map(incoming.map((n) => [n.id, n]))
+  for (const n of local) byId.set(n.id, n)
   return [...byId.values()].sort((a, b) => a.timestampSec - b.timestampSec)
 }
 
@@ -144,6 +148,11 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
   const [selectionRect, setSelectionRect] = useState<NormalizedRect | null>(null)
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'saving' | 'error'>('idle')
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [researchLoadingId, setResearchLoadingId] = useState<string | null>(null)
+  const [researchErrors, setResearchErrors] = useState<Record<string, string>>({})
+  const [isVisualComposerOpen, setIsVisualComposerOpen] = useState(false)
+  const [visualDraftTimestamp, setVisualDraftTimestamp] = useState(0)
+  const [visualDraftText, setVisualDraftText] = useState('')
 
   // Notes for THIS video only (the localStorage array holds every video's notes).
   const videoNotes = notes
@@ -154,7 +163,8 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
   }, [notes])
 
-  // When DB-backed, pull this video's notes and merge them into the local set.
+  // When DB-backed, pull this video's notes once and merge them in. getVideo is
+  // cached in lib/api, so revisiting a video won't refetch over the network.
   useEffect(() => {
     if (!persist) return
     let cancelled = false
@@ -168,10 +178,21 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
     }
   }, [persist, videoId])
 
-  /** Add a note to local state (+ localStorage) and, if persisting, the DB. */
+  /** Mirror a note to the DB when this workspace is DB-backed. Best-effort. */
+  function persistNote(note: VidscribeNote) {
+    if (persist) saveNote(note).catch((err) => console.error('Could not save note:', err))
+  }
+
+  /** Add a new note to local state (+ localStorage) and the DB. */
   function addNote(note: VidscribeNote) {
     setNotes((prev) => [...prev, note].sort((a, b) => a.timestampSec - b.timestampSec))
-    if (persist) saveNote(note).catch((err) => console.error('Could not save note:', err))
+    persistNote(note)
+  }
+
+  /** Update an existing note in local state (+ localStorage) and the DB. */
+  function updateNote(updated: VidscribeNote) {
+    setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)))
+    persistNote(updated)
   }
 
   function handleTextNoteClick() {
@@ -212,6 +233,41 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
 
   function handleCancel() {
     setIsComposerOpen(false)
+  }
+
+  function handleVisualNoteClick() {
+    const video = videoRef.current
+    if (!video) return
+    video.pause()
+    setVisualDraftTimestamp(video.currentTime)
+    setVisualDraftText('')
+    setIsVisualComposerOpen(true)
+  }
+
+  function handleVisualComposerCancel() {
+    setIsVisualComposerOpen(false)
+  }
+
+  async function handleVisualComposerSubmit() {
+    const video = videoRef.current
+    if (!video) return
+    const text = visualDraftText.trim() || DEFAULT_VISUAL_PROMPT
+
+    const note: VidscribeNote = {
+      id: crypto.randomUUID(),
+      videoId,
+      timestampSec: visualDraftTimestamp,
+      kind: 'text',
+      text,
+      createdAt: new Date().toISOString(),
+    }
+    addNote(note)
+    setIsVisualComposerOpen(false)
+
+    // Reuse the existing Lens crop-selection flow as-is — it works on any note.
+    await waitForVideoSeek(video, note.timestampSec)
+    setSelectionRect(null)
+    setLensNote(note)
   }
 
   function handleNoteClick(note: VidscribeNote) {
@@ -410,13 +466,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
         throw new Error('Lens response was missing an explanation')
       }
 
-      const updated: VidscribeNote = {
-        ...note,
-        aiExplanation: data.explanation,
-        imageDataUrl: frame.dataUrl,
-      }
-      setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)))
-      if (persist) saveNote(updated).catch((err) => console.error('Could not save note:', err))
+      updateNote({ ...note, aiExplanation: data.explanation, imageDataUrl: frame.dataUrl })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lens request failed'
       setLensErrors((prev) => ({ ...prev, [note.id]: message }))
@@ -424,6 +474,45 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       setLensLoadingId(null)
       setLensNote(null)
       setSelectionRect(null)
+    }
+  }
+
+  async function handleResearchClick(note: VidscribeNote) {
+    setResearchErrors((prev) => {
+      const rest = { ...prev }
+      delete rest[note.id]
+      return rest
+    })
+    setResearchLoadingId(note.id)
+
+    try {
+      const text = note.aiExplanation ? `${note.text}\n\n${note.aiExplanation}` : note.text
+
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Research request failed (${res.status})`)
+      }
+      if (!data || typeof data.summary !== 'string') {
+        throw new Error('Research response was missing a summary')
+      }
+
+      updateNote({
+        ...note,
+        researchKeywords: Array.isArray(data.keywords) ? data.keywords : undefined,
+        researchSummary: data.summary,
+        researchLinks: Array.isArray(data.links) ? data.links : undefined,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Research request failed'
+      setResearchErrors((prev) => ({ ...prev, [note.id]: message }))
+    } finally {
+      setResearchLoadingId(null)
     }
   }
 
@@ -468,6 +557,38 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
             </div>
           )}
         </div>
+
+        {isVisualComposerOpen && (
+          <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-4">
+            <p className="mb-2 text-sm text-gray-400">
+              Visual note at {formatTimestamp(visualDraftTimestamp)}
+            </p>
+            <textarea
+              autoFocus
+              value={visualDraftText}
+              onChange={(e) => setVisualDraftText(e.target.value)}
+              placeholder={DEFAULT_VISUAL_PROMPT}
+              rows={3}
+              className="w-full rounded-md border border-gray-700 bg-gray-950 p-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleVisualComposerCancel}
+                className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleVisualComposerSubmit}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
 
         {lensNote && (
           <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
@@ -537,10 +658,11 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
           </button>
           <button
             type="button"
-            disabled
-            className="cursor-not-allowed rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-500"
+            onClick={handleVisualNoteClick}
+            disabled={!!lensNote}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Lens · coming soon
+            Visual Note
           </button>
           <button
             type="button"
@@ -632,8 +754,45 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
                   </div>
                 )}
 
-                {note.kind === 'text' && (
-                  <div className="mt-2">
+                {note.researchSummary && (
+                  <div className="mt-2 border-t border-gray-800 pt-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Research
+                    </p>
+                    {note.researchKeywords && note.researchKeywords.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {note.researchKeywords.map((keyword) => (
+                          <span
+                            key={keyword}
+                            className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300"
+                          >
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-2 text-sm text-gray-200">{note.researchSummary}</p>
+                    {note.researchLinks && note.researchLinks.length > 0 && (
+                      <ul className="mt-2 flex flex-col gap-1">
+                        {note.researchLinks.slice(0, 5).map((link) => (
+                          <li key={link}>
+                            <a
+                              href={link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block truncate text-xs text-indigo-400 hover:underline"
+                            >
+                              {link}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => handleExplainVisualClick(note)}
@@ -646,11 +805,26 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
                           ? 'Re-explain visual'
                           : 'Explain visual'}
                     </button>
-                    {lensErrors[note.id] && (
-                      <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleResearchClick(note)}
+                      disabled={researchLoadingId === note.id}
+                      className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {researchLoadingId === note.id
+                        ? 'Researching…'
+                        : note.researchSummary
+                          ? 'Re-research this'
+                          : 'Research this'}
+                    </button>
                   </div>
-                )}
+                  {lensErrors[note.id] && (
+                    <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
+                  )}
+                  {researchErrors[note.id] && (
+                    <p className="mt-1 text-xs text-red-400">{researchErrors[note.id]}</p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

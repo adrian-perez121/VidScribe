@@ -46,11 +46,15 @@ function buildClient(): MongoClient {
   }
 
   // If the URI has no inline credentials, pass them as explicit auth options.
+  // Fail server selection in 10s (instead of the 30s default) so a connection
+  // problem surfaces quickly instead of hanging each request.
   const hasInlineCredentials = /\/\/[^/@]+@/.test(uri)
-  const options =
-    !hasInlineCredentials && username && password
-      ? { auth: { username, password } }
-      : {}
+  const options: ConstructorParameters<typeof MongoClient>[1] = {
+    serverSelectionTimeoutMS: 10000,
+  }
+  if (!hasInlineCredentials && username && password) {
+    options.auth = { username, password }
+  }
 
   return new MongoClient(uri, options)
 }
@@ -63,7 +67,17 @@ const globalForMongo = globalThis as unknown as {
 
 function clientPromise(): Promise<MongoClient> {
   if (!globalForMongo.mongoClientPromise) {
-    globalForMongo.mongoClientPromise = buildClient().connect()
+    const pending = buildClient().connect()
+    // Don't cache a FAILED connection: if we did, every later request would
+    // reuse the rejected promise and keep failing until the process restarts.
+    // Clearing it lets the next request retry (e.g. after fixing the Atlas IP
+    // allowlist) without a server restart.
+    pending.catch(() => {
+      if (globalForMongo.mongoClientPromise === pending) {
+        globalForMongo.mongoClientPromise = undefined
+      }
+    })
+    globalForMongo.mongoClientPromise = pending
   }
   return globalForMongo.mongoClientPromise
 }
