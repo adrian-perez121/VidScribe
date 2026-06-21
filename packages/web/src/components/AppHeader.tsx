@@ -7,13 +7,16 @@ function AppHeader() {
 
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-950">
-      <Link to="/" className="block">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-          Vidscribe
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          video notes that remember the moment
-        </p>
+      <Link to="/" className="flex items-center gap-3">
+        <img src="/Vidscribe.svg" alt="Vidscribe logo" className="h-10 w-10" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+            Vidscribe
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            video notes that remember the moment
+          </p>
+        </div>
       </Link>
       <div className="flex items-center gap-2">
         <button

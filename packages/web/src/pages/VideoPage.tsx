@@ -28,7 +28,7 @@ function VideoPage() {
   }, [id])
 
   return (
-    <main className="flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <main className="flex min-h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 lg:h-screen lg:overflow-hidden">
       <AppHeader />
       {error ? (
         <div className="p-6 text-sm text-red-500 dark:text-red-400">{error}</div>

@@ -672,14 +672,14 @@ function VideoWorkspace({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6 lg:flex-row lg:overflow-hidden">
+    <div className="flex flex-col gap-4 p-4 lg:flex-1 lg:flex-row lg:gap-6 lg:overflow-hidden lg:p-6">
       <section className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
         {title && (
           <h2 className="shrink-0 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
         )}
         <div
           ref={videoBoxRef}
-          className="relative h-[40vh] overflow-hidden rounded-lg border border-gray-200 bg-black lg:h-auto lg:min-h-0 lg:flex-1 dark:border-gray-800"
+          className="relative aspect-video w-full overflow-hidden rounded-lg border border-gray-200 bg-black lg:aspect-auto lg:min-h-0 lg:flex-1 dark:border-gray-800"
         >
           <video
             ref={videoRef}
@@ -932,7 +932,7 @@ function VideoWorkspace({
         )}
       </section>
 
-      <aside className="flex w-full min-h-0 flex-col gap-3 lg:w-80">
+      <aside className="flex w-full flex-col gap-3 lg:min-h-0 lg:w-80">
         <h2 className="shrink-0 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           Notes
         </h2>
@@ -970,11 +970,11 @@ function VideoWorkspace({
         )}
 
         {videoNotes.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400 dark:border-gray-800 dark:text-gray-500">
+          <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400 dark:border-gray-800 dark:text-gray-500 lg:flex-1">
             No notes yet. Click Text Note to mark this moment.
           </div>
         ) : (
-          <ul className="flex flex-col gap-2 overflow-y-auto">
+          <ul className="flex flex-col gap-2 lg:overflow-y-auto">
             {videoNotes.map((note) => (
               <li
                 key={note.id}
@@ -1065,7 +1065,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleExplainVisualClick(note)}
                       disabled={lensLoadingId === note.id || !!lensNote}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 lg:px-2 lg:py-1"
                     >
                       {lensLoadingId === note.id
                         ? 'Explaining…'
@@ -1077,7 +1077,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleResearchClick(note)}
                       disabled={researchLoadingId === note.id}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 lg:px-2 lg:py-1"
                     >
                       {researchLoadingId === note.id
                         ? 'Researching…'
