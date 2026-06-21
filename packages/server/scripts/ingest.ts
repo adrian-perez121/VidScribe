@@ -3,6 +3,7 @@ import OpenAI from 'openai'
 import type { VidscribeNote, TranscriptSegment } from '@vid-mark/shared'
 import { redis, connectRedis, ensureIndex, dropIndex } from '../lib/redis.js'
 import { getDb, getNotesCollection, getTranscriptsCollection, VIDEO_BUCKET } from '../lib/mongo.js'
+import { cacheDeleteByPattern } from '../lib/cache.js'
 
 // Batch reindex: pull every note AND transcript from Mongo and (re)build the
 // Redis vector index from scratch. Each chunk carries a `start_sec` so the
@@ -164,6 +165,11 @@ async function main() {
     console.log(`  text: "${sample.text?.slice(0, 80)}..."`)
     console.log(`  embedding bytes: ${embeddingBytes} (expect 6144)`)
   }
+
+  // Content changed — drop cached study guides + chat answers so they regenerate.
+  const flushed = await cacheDeleteByPattern('cache:guide:*')
+  const flushedChat = await cacheDeleteByPattern('cache:chat:*')
+  console.log(`Flushed caches: ${flushed} guide, ${flushedChat} chat`)
 
   await redis.disconnect()
   process.exit(0)

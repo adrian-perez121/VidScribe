@@ -1,9 +1,15 @@
 import type { StudyGuide } from '@vid-mark/shared'
 import { anthropic, textFrom, extractJson } from './anthropic.js'
 import { collectContent } from './contentCollector.js'
+import { cacheGet, cacheSet } from './cache.js'
 
 // Generate a study guide on demand from a video's (or the whole library's)
-// notes, lens explanations, research summaries, and transcript. Not persisted.
+// notes, lens explanations, research summaries, and transcript. The result is
+// cached in Redis by scope (busted when a note changes / on re-ingest, with a
+// TTL backstop) so repeat requests skip the Claude call.
+
+const GUIDE_TTL_SECONDS = 60 * 60 // 1 hour
+const guideCacheKey = (videoId?: string) => `cache:guide:${videoId ?? 'all'}`
 
 const SYSTEM_PROMPT = `You are a study assistant. You are given a student's collected study material for one or more lecture videos: their notes, AI explanations, web-research summaries, and the lecture transcript, each labeled with its source and video.
 
@@ -25,6 +31,14 @@ interface RawGuide {
 
 /** Returns null when there's no material to build from. */
 export async function generateStudyGuide(videoId?: string): Promise<StudyGuide | null> {
+  const cacheKey = guideCacheKey(videoId)
+  const cached = await cacheGet<StudyGuide>(cacheKey)
+  if (cached) {
+    console.log(`[cache] study guide HIT ${cacheKey}`)
+    return cached
+  }
+  console.log(`[cache] study guide MISS ${cacheKey}`)
+
   const content = await collectContent(videoId)
   if (content.count === 0) return null
 
@@ -43,10 +57,12 @@ export async function generateStudyGuide(videoId?: string): Promise<StudyGuide |
       points: (s.points ?? []).filter((p): p is string => typeof p === 'string' && p.trim() !== ''),
     }))
 
-  return {
+  const guide: StudyGuide = {
     title: videoId ? `Study guide: ${content.title}` : 'Study guide: all videos',
     overview: typeof raw.overview === 'string' ? raw.overview : '',
     sections,
     videoId,
   }
+  await cacheSet(cacheKey, guide, GUIDE_TTL_SECONDS)
+  return guide
 }

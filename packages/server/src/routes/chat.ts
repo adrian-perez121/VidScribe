@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
+import { createHash } from 'node:crypto'
 import Anthropic from '@anthropic-ai/sdk'
-import type { ChatSource } from '@vid-mark/shared'
+import type { ChatSource, ChatResponse } from '@vid-mark/shared'
 import { search, getVideoDocs } from '../../lib/search.js'
 import { loadHistory, appendTurn } from '../../lib/session.js'
+import { cacheGet, cacheSet } from '../../lib/cache.js'
 
 // POST /api/chat — the study chatbot. Retrieves relevant content from the Redis
 // vector index, grounds a Claude answer in it, and returns { answer, sources }
@@ -21,6 +23,14 @@ const TOP_K = 5
 // and no sources. Tuned for text-embedding-3-small: on-topic matches land well
 // under ~0.5, clearly unrelated ones up near ~0.9-1.0.
 const MAX_DISTANCE = 0.6
+
+// Answers to FIRST-turn questions (no prior history) are cached by scope+message,
+// since they depend only on the question and the indexed content. Follow-ups
+// (which depend on conversation history) are never served from cache. Busted on
+// re-ingest; TTL is a backstop. Reflects the Redis index, not live Mongo notes.
+const CHAT_TTL_SECONDS = 60 * 30 // 30 minutes
+const chatCacheKey = (videoId: string | undefined, message: string) =>
+  `cache:chat:${videoId ?? 'all'}:${createHash('sha1').update(message.toLowerCase()).digest('hex')}`
 
 /** Human-friendly labels for each source tag, used in the context block. */
 const SOURCE_LABEL: Record<string, string> = {
@@ -64,6 +74,25 @@ chatRoute.post('/', async (c) => {
   const videoId = typeof body.video_id === 'string' && body.video_id ? body.video_id : undefined
 
   try {
+    // 0. Load history first — it decides both Claude context and cacheability.
+    const history = sessionId ? await loadHistory(sessionId, 8) : []
+    // Only first-turn questions are cacheable (follow-ups depend on history).
+    const cacheable = history.length === 0
+    const cacheKey = chatCacheKey(videoId, message)
+
+    if (cacheable) {
+      const hit = await cacheGet<ChatResponse>(cacheKey)
+      if (hit) {
+        console.log(`[cache] chat HIT ${cacheKey}`)
+        if (sessionId) {
+          await appendTurn(sessionId, { role: 'user', content: message })
+          await appendTurn(sessionId, { role: 'assistant', content: hit.answer })
+        }
+        return c.json(hit)
+      }
+      console.log(`[cache] chat MISS ${cacheKey}`)
+    }
+
     // 1. Retrieve relevant chunks, then keep only those close enough to count.
     let results = (await search(message, TOP_K, videoId ? { videoId } : undefined)).filter(
       (r) => r.score <= MAX_DISTANCE,
@@ -86,9 +115,6 @@ chatRoute.post('/', async (c) => {
           })
           .join('\n\n')
       : '(no relevant content found)'
-
-    // 3. Load conversation history (if a session was provided).
-    const history = sessionId ? await loadHistory(sessionId, 8) : []
 
     // 4. Ask Claude, grounded in the context.
     const resp = await anthropic.messages.create({
@@ -119,13 +145,18 @@ chatRoute.post('/', async (c) => {
         ...(r.startSec >= 0 ? { timestamp_sec: r.startSec } : {}),
       }))
 
-    // 6. Persist this turn for follow-ups.
+    const payload: ChatResponse = { answer, sources }
+
+    // 6. Cache first-turn answers for reuse across sessions.
+    if (cacheable) await cacheSet(cacheKey, payload, CHAT_TTL_SECONDS)
+
+    // 7. Persist this turn for follow-ups.
     if (sessionId) {
       await appendTurn(sessionId, { role: 'user', content: message })
       await appendTurn(sessionId, { role: 'assistant', content: answer })
     }
 
-    return c.json({ answer, sources })
+    return c.json(payload)
   } catch (err) {
     console.error('Chat request failed:', err)
     return c.json({ error: 'Chat request failed. Check server logs for details.' }, 500)
