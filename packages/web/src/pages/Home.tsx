@@ -54,14 +54,38 @@ function waitForVideoSeek(video: HTMLVideoElement, timestampSec: number): Promis
   })
 }
 
-/** Draw the video's current frame to a canvas and return it as both a Blob and a data URL. */
-function captureVideoFrame(video: HTMLVideoElement): { blob: Blob; dataUrl: string } | null {
+/** A selection rectangle in normalized (0-1) coordinates relative to the video box. */
+type NormalizedRect = { x: number; y: number; width: number; height: number }
+
+/** Minimum normalized width/height a selection must have to be usable. */
+const MIN_SELECTION_SIZE = 0.03
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
+
+/**
+ * Draw the video's current frame to a canvas and return it as both a Blob and
+ * a data URL. If `rect` is given (normalized 0-1 coords), only that region of
+ * the actual video pixels is captured.
+ */
+function captureVideoFrame(
+  video: HTMLVideoElement,
+  rect?: NormalizedRect,
+): { blob: Blob; dataUrl: string } | null {
+  const videoWidth = video.videoWidth
+  const videoHeight = video.videoHeight
+  if (videoWidth === 0 || videoHeight === 0) return null
+
+  const sx = rect ? Math.round(rect.x * videoWidth) : 0
+  const sy = rect ? Math.round(rect.y * videoHeight) : 0
+  const sw = rect ? Math.max(1, Math.round(rect.width * videoWidth)) : videoWidth
+  const sh = rect ? Math.max(1, Math.round(rect.height * videoHeight)) : videoHeight
+
   const canvas = document.createElement('canvas')
-  canvas.width = video.videoWidth
-  canvas.height = video.videoHeight
+  canvas.width = sw
+  canvas.height = sh
   const ctx = canvas.getContext('2d')
-  if (!ctx || canvas.width === 0 || canvas.height === 0) return null
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  if (!ctx) return null
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
   const dataUrl = canvas.toDataURL('image/png')
   const byteString = atob(dataUrl.split(',')[1])
   const bytes = new Uint8Array(byteString.length)
@@ -71,12 +95,16 @@ function captureVideoFrame(video: HTMLVideoElement): { blob: Blob; dataUrl: stri
 
 function Home() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const videoBoxRef = useRef<HTMLDivElement | null>(null)
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [notes, setNotes] = useState<VidscribeNote[]>(loadNotes)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [draftTimestamp, setDraftTimestamp] = useState(0)
   const [draftText, setDraftText] = useState('')
   const [lensLoadingId, setLensLoadingId] = useState<string | null>(null)
   const [lensErrors, setLensErrors] = useState<Record<string, string>>({})
+  const [lensNote, setLensNote] = useState<VidscribeNote | null>(null)
+  const [selectionRect, setSelectionRect] = useState<NormalizedRect | null>(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
@@ -129,7 +157,7 @@ function Home() {
     video.play().catch(() => {})
   }
 
-  async function handleLensClick(note: VidscribeNote) {
+  async function handleExplainVisualClick(note: VidscribeNote) {
     const video = videoRef.current
     if (!video) return
 
@@ -144,7 +172,72 @@ function Home() {
 
     try {
       await waitForVideoSeek(video, note.timestampSec)
-      const frame = captureVideoFrame(video)
+      setSelectionRect(null)
+      setLensNote(note)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not seek to that timestamp'
+      setLensErrors((prev) => ({ ...prev, [note.id]: message }))
+    } finally {
+      setLensLoadingId(null)
+    }
+  }
+
+  function getRelativePoint(e: React.PointerEvent<HTMLDivElement>) {
+    const box = videoBoxRef.current
+    const rect = box?.getBoundingClientRect()
+    if (!rect || rect.width === 0 || rect.height === 0) return null
+    return {
+      x: clamp01((e.clientX - rect.left) / rect.width),
+      y: clamp01((e.clientY - rect.top) / rect.height),
+    }
+  }
+
+  function handleSelectionPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    const point = getRelativePoint(e)
+    if (!point) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragStartRef.current = point
+    setSelectionRect({ x: point.x, y: point.y, width: 0, height: 0 })
+  }
+
+  function handleSelectionPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const start = dragStartRef.current
+    if (!start) return
+    const point = getRelativePoint(e)
+    if (!point) return
+    setSelectionRect({
+      x: Math.min(start.x, point.x),
+      y: Math.min(start.y, point.y),
+      width: Math.abs(point.x - start.x),
+      height: Math.abs(point.y - start.y),
+    })
+  }
+
+  function handleSelectionPointerUp() {
+    dragStartRef.current = null
+  }
+
+  function handleCancelSelection() {
+    dragStartRef.current = null
+    setLensNote(null)
+    setSelectionRect(null)
+  }
+
+  const isSelectionValid =
+    !!selectionRect &&
+    selectionRect.width >= MIN_SELECTION_SIZE &&
+    selectionRect.height >= MIN_SELECTION_SIZE
+
+  async function handleUseSelection() {
+    const video = videoRef.current
+    if (!video || !lensNote || !isSelectionValid || !selectionRect) return
+    const note = lensNote
+    const rect = selectionRect
+
+    setLensLoadingId(note.id)
+
+    try {
+      const frame = captureVideoFrame(video, rect)
       if (!frame) throw new Error('Could not capture video frame')
 
       const notesBefore = notes
@@ -172,23 +265,20 @@ function Home() {
         throw new Error('Lens response was missing an explanation')
       }
 
-      const visualNote: VidscribeNote = {
-        id: crypto.randomUUID(),
-        videoId: VIDEO_ID,
-        timestampSec: note.timestampSec,
-        kind: 'visual',
-        parentNoteId: note.id,
-        text: 'Visual explanation',
-        aiExplanation: data.explanation,
-        imageDataUrl: frame.dataUrl,
-        createdAt: new Date().toISOString(),
-      }
-      setNotes((prev) => [...prev, visualNote].sort((a, b) => a.timestampSec - b.timestampSec))
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === note.id
+            ? { ...n, aiExplanation: data.explanation, imageDataUrl: frame.dataUrl }
+            : n,
+        ),
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lens request failed'
       setLensErrors((prev) => ({ ...prev, [note.id]: message }))
     } finally {
       setLensLoadingId(null)
+      setLensNote(null)
+      setSelectionRect(null)
     }
   }
 
@@ -201,14 +291,65 @@ function Home() {
 
       <div className="flex flex-1 flex-col gap-6 overflow-hidden p-6 lg:flex-row">
         <section className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-800 bg-black">
+          <div
+            ref={videoBoxRef}
+            className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-800 bg-black"
+          >
             <video
               ref={videoRef}
               className="h-full w-full object-contain"
               src="/demo-video.mp4"
               controls
             />
+            {lensNote && (
+              <div
+                className="absolute inset-0 cursor-crosshair touch-none bg-black/30"
+                onPointerDown={handleSelectionPointerDown}
+                onPointerMove={handleSelectionPointerMove}
+                onPointerUp={handleSelectionPointerUp}
+              >
+                <p className="absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded bg-gray-950/80 px-3 py-1 text-xs text-gray-100">
+                  Drag over the part of the video you want explained
+                </p>
+                {selectionRect && (
+                  <div
+                    className="pointer-events-none absolute border-2 border-indigo-400 bg-indigo-400/20"
+                    style={{
+                      left: `${selectionRect.x * 100}%`,
+                      top: `${selectionRect.y * 100}%`,
+                      width: `${selectionRect.width * 100}%`,
+                      height: `${selectionRect.height * 100}%`,
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </div>
+
+          {lensNote && (
+            <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
+              <p className="text-xs text-gray-400">
+                {isSelectionValid ? 'Selection ready.' : 'Drag a larger rectangle over the video.'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSelection}
+                  className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUseSelection}
+                  disabled={!isSelectionValid || lensLoadingId === lensNote.id}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {lensLoadingId === lensNote.id ? 'Explaining…' : 'Use selection'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex shrink-0 flex-wrap gap-2">
             <button
@@ -300,34 +441,41 @@ function Home() {
                         {formatTimestamp(note.timestampSec)}
                       </span>
                       <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs text-indigo-300">
-                        {note.kind === 'visual' ? 'Visual' : 'Text'}
+                        Text
                       </span>
                     </div>
-                    {note.kind === 'visual' ? (
-                      <>
-                        {note.imageDataUrl && (
-                          <img
-                            src={note.imageDataUrl}
-                            alt="Captured video frame"
-                            className="mt-2 max-h-32 w-full rounded object-cover"
-                          />
-                        )}
-                        <p className="mt-2 text-sm text-gray-200">{note.aiExplanation}</p>
-                      </>
-                    ) : (
-                      <p className="mt-2 text-sm text-gray-200">{note.text}</p>
-                    )}
+                    <p className="mt-2 text-sm text-gray-200">{note.text}</p>
                   </button>
+
+                  {note.aiExplanation && (
+                    <div className="mt-2 border-t border-gray-800 pt-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Visual explanation
+                      </p>
+                      {note.imageDataUrl && (
+                        <img
+                          src={note.imageDataUrl}
+                          alt="Captured video frame"
+                          className="mt-2 max-h-32 w-full rounded object-cover"
+                        />
+                      )}
+                      <p className="mt-2 text-sm text-gray-200">{note.aiExplanation}</p>
+                    </div>
+                  )}
 
                   {note.kind === 'text' && (
                     <div className="mt-2">
                       <button
                         type="button"
-                        onClick={() => handleLensClick(note)}
-                        disabled={lensLoadingId === note.id}
+                        onClick={() => handleExplainVisualClick(note)}
+                        disabled={lensLoadingId === note.id || !!lensNote}
                         className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {lensLoadingId === note.id ? 'Explaining…' : 'Explain visual'}
+                        {lensLoadingId === note.id
+                          ? 'Explaining…'
+                          : note.aiExplanation
+                            ? 'Re-explain visual'
+                            : 'Explain visual'}
                       </button>
                       {lensErrors[note.id] && (
                         <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
