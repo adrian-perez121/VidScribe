@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import VideoWorkspace from '../components/VideoWorkspace'
 import { getVideo } from '../lib/api'
@@ -9,6 +9,11 @@ import { getVideo } from '../lib/api'
 
 function VideoPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
+  // Set once by UploadButton right after a successful upload — tells
+  // VideoWorkspace to kick off transcript generation in the background.
+  const autoGenerateTranscript =
+    (location.state as { autoGenerateTranscript?: boolean } | null)?.autoGenerateTranscript === true
   const [title, setTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -39,6 +44,7 @@ function VideoPage() {
           videoSrc={`/api/videos/${id}/stream`}
           persist
           title={title}
+          autoGenerateTranscript={autoGenerateTranscript}
         />
       )}
     </main>

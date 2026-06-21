@@ -47,7 +47,9 @@ function UploadButton() {
         durationSec,
         onProgress: (percent) => setStatus({ kind: 'uploading', percent }),
       })
-      navigate(`/videos/${video.id}`)
+      // The video page's transcript panel reads this flag once to kick off
+      // background generation automatically — see VideoPage/VideoWorkspace.
+      navigate(`/videos/${video.id}`, { state: { autoGenerateTranscript: true } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {

@@ -137,14 +137,26 @@ export interface VideoWorkspaceProps {
   persist?: boolean
   /** Optional heading shown above the player. */
   title?: string
+  /** When true, auto-trigger transcript generation once if none exists yet (set right after upload). */
+  autoGenerateTranscript?: boolean
 }
 
-function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWorkspaceProps) {
+function VideoWorkspace({
+  videoId,
+  videoSrc,
+  persist = false,
+  title,
+  autoGenerateTranscript = false,
+}: VideoWorkspaceProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const videoBoxRef = useRef<HTMLDivElement | null>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+  const autoGenerateTriggeredRef = useRef(false)
+  const autoGenerateRef = useRef(autoGenerateTranscript)
+  autoGenerateRef.current = autoGenerateTranscript
+  const generateTranscriptRef = useRef<() => Promise<void>>(async () => {})
   const [notes, setNotes] = useState<VidscribeNote[]>(loadNotes)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [draftTimestamp, setDraftTimestamp] = useState(0)
@@ -160,7 +172,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
   const [isVisualComposerOpen, setIsVisualComposerOpen] = useState(false)
   const [visualDraftTimestamp, setVisualDraftTimestamp] = useState(0)
   const [visualDraftText, setVisualDraftText] = useState('')
-  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false)
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(autoGenerateTranscript)
   const [transcript, setTranscript] = useState<VideoTranscript | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const [transcriptGenerating, setTranscriptGenerating] = useState(false)
@@ -207,6 +219,16 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
         // 404 (no transcript yet) is expected, not an error worth surfacing.
         if (!cancelled) setTranscript(null)
         console.error('Could not load transcript:', err)
+
+        // Auto-trigger generation once, right after upload (see VideoPage).
+        // Reuses handleGenerateTranscript's own state, so the manual button
+        // and this path can never run concurrently. Read through refs so
+        // this effect doesn't need to depend on either (both are read fresh
+        // via .current, not captured in the closure).
+        if (!cancelled && autoGenerateRef.current && !autoGenerateTriggeredRef.current) {
+          autoGenerateTriggeredRef.current = true
+          void generateTranscriptRef.current()
+        }
       })
       .finally(() => {
         if (!cancelled) setTranscriptLoading(false)
@@ -254,6 +276,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       setTranscriptGenerating(false)
     }
   }
+  generateTranscriptRef.current = handleGenerateTranscript
 
   /** Mirror a note to the DB when this workspace is DB-backed. Best-effort. */
   function persistNote(note: VidscribeNote) {
