@@ -172,3 +172,30 @@ export async function sendChat(
   }
   return (await res.json()) as ChatResponse
 }
+
+/**
+ * Download a generated .docx export. `kind` picks the endpoint; `videoId` scopes
+ * it to one video (omit for the whole library). Saves the file via a temporary
+ * object URL. Throws with the server's error message on failure.
+ */
+export async function downloadExport(
+  kind: 'notes' | 'study-guide',
+  videoId?: string,
+): Promise<void> {
+  const qs = videoId ? `?video_id=${encodeURIComponent(videoId)}` : ''
+  const res = await fetch(`/api/export/${kind}.docx${qs}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Export failed (${res.status})`)
+  }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${kind}.docx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
