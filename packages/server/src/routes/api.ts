@@ -20,7 +20,10 @@ api.get('/health', (c) => {
 
 // Required to run real Browserbase/Gemini research. Checked up front so a
 // missing key surfaces as a clear error, not an uncaught throw mid-request.
-const RESEARCH_ENV_VARS = ['BROWSERBASE_API_KEY', 'BROWSERBASE_PROJECT_ID', 'GEMINI_API_KEY']
+// BROWSERBASE_PROJECT_ID is intentionally not required here: createStagehand()
+// doesn't pass it, and Browserbase falls back to the API key's default project
+// when it's omitted — it's an optional override, not a hard dependency.
+const RESEARCH_ENV_VARS = ['BROWSERBASE_API_KEY', 'GEMINI_API_KEY']
 
 // Research a chunk of transcript: filter to keywords, search the web via
 // Browserbase/Stagehand, and return one combined summary plus its source links.
