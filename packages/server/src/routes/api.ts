@@ -18,7 +18,7 @@ api.get('/health', (c) => {
 })
 
 // Research a chunk of transcript: filter to keywords, search the web via
-// Browserbase/Stagehand, and return the top sources with summaries.
+// Browserbase/Stagehand, and return one combined summary plus its source links.
 // Note: this spins up a remote browser session, so it can take a while.
 api.post('/research', async (c) => {
   const body = await c.req.json<ResearchRequest>().catch(() => null)
@@ -26,8 +26,8 @@ api.post('/research', async (c) => {
     return c.json({ error: 'Body must be { text: string }' }, 400)
   }
 
-  const { keywords, results } = await researchTopic(body.text)
-  const response: ResearchResponse = { keywords, results }
+  const { keywords, summary, links } = await researchTopic(body.text)
+  const response: ResearchResponse = { keywords, summary, links }
   return c.json(response)
 })
 api.route('/explain', explainRoute)

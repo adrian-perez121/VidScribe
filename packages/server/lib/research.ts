@@ -1,17 +1,16 @@
 import { Type } from '@google/genai'
 import keyword_extractor from 'keyword-extractor'
-import type { ResearchResult } from '@vid-mark/shared'
 import { createStagehand } from './stagehand.js'
 import { createGemini, GEMINI_MODEL } from './gemini.js'
 
 // Research service: given a chunk of lecture transcript, filter it down to
 // keywords, search the web with a real browser (Browserbase via Stagehand),
-// open the top results, and summarize each. Returns up to 3 {link, summary}
-// pairs the user should look at.
+// open the top results, and synthesize them into ONE combined summary. Returns
+// that summary plus the (up to 3) links the information came from.
 //
 // Cost discipline: Gemini is called exactly TWICE per research call — once at
 // the start to distill the transcript into keywords, and once at the end to
-// turn the scraped pages into teacher-style summaries tied back to the
+// turn the scraped pages into a single teacher-style summary tied back to the
 // transcript. Everything in between (search, link discovery, page scraping) is
 // plain DOM work in the browser, no LLM. This keeps us well under Gemini's
 // free-tier rate limit.
@@ -133,31 +132,21 @@ interface ScrapedSource {
   content: string
 }
 
-// JSON schema constraining Gemini's final summarization output: one polished
-// summary per source, keyed back to its link so we can re-pair reliably.
+// JSON schema constraining Gemini's final summarization output: one combined
+// summary synthesized from all the sources.
 const summaryResponseSchema = {
   type: Type.OBJECT,
   properties: {
-    summaries: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          link: { type: Type.STRING },
-          summary: { type: Type.STRING },
-        },
-        required: ['link', 'summary'],
-      },
-    },
+    summary: { type: Type.STRING },
   },
-  required: ['summaries'],
+  required: ['summary'],
 }
 
 /**
  * The persona/context for the final summarization. Gemini is, implicitly, a
  * teacher writing for a student — but it must NEVER say so. It just adopts the
- * voice: warm, clear, and always relating each source back to what the student
- * was just learning, then nudging them to open the page and dig deeper.
+ * voice: warm, clear, and always relating the material back to what the student
+ * was just learning, then nudging them to open the sources and dig deeper.
  */
 const SUMMARIZER_SYSTEM_INSTRUCTION =
   'You are an experienced teacher helping a student deepen their understanding ' +
@@ -166,26 +155,26 @@ const SUMMARIZER_SYSTEM_INSTRUCTION =
   'that you are a teacher, that they are a student, or that this is for their ' +
   'education. Simply write in the voice of a thoughtful teacher.\n\n' +
   'You are given a chunk of lecture transcript the student just heard, plus ' +
-  'raw text scraped from a few web pages found while researching it. For each ' +
-  'web page, write a short summary (2-4 sentences) that: (1) explains what the ' +
-  'page covers, and (2) explicitly ties that subject back to the specific ' +
-  'ideas in the transcript chunk — show the student how this source connects ' +
-  'to what they were just learning. End each summary by warmly encouraging the ' +
-  'student to open and explore the page to learn more. Be accurate to the ' +
-  'scraped content; do not invent facts it does not support.'
+  'raw text scraped from a few web pages found while researching it. Write ONE ' +
+  'combined summary (a short, cohesive paragraph or two) that weaves together ' +
+  'what these sources collectively cover and explicitly ties it back to the ' +
+  'specific ideas in the transcript chunk — show the student how this research ' +
+  'connects to what they were just learning. End by encouraging the ' +
+  'student to open and explore the linked sources to learn more. Be accurate ' +
+  'to the scraped content; do not invent facts it does not support.'
 
 /**
- * Turn the scraped pages into teacher-style summaries in a SINGLE Gemini call.
- * Each summary ties the page's subject back to the original transcript chunk and
- * nudges the reader to explore the source. Returns summaries paired to links.
+ * Synthesize all the scraped pages into ONE combined teacher-style summary in a
+ * SINGLE Gemini call. The summary ties the research back to the original
+ * transcript chunk and nudges the reader to explore the sources.
  *
  * Throws if the call fails or returns nothing — the caller falls back to the
- * raw scraped text so the user still gets sources.
+ * raw scraped text so the user still gets something.
  */
 async function summarizeSources(
   text: string,
   sources: ScrapedSource[],
-): Promise<Map<string, string>> {
+): Promise<string> {
   const ai = createGemini()
   const sourcesBlock = sources
     .map(
@@ -200,7 +189,7 @@ async function summarizeSources(
       'Transcript chunk the student just heard:\n' +
       text +
       '\n\n===\n\nWeb pages found while researching this chunk. Write one ' +
-      'summary per source, reusing each source\'s exact URL as its "link":\n\n' +
+      'combined summary drawing on all of them:\n\n' +
       sourcesBlock,
     config: {
       systemInstruction: SUMMARIZER_SYSTEM_INSTRUCTION,
@@ -213,20 +202,12 @@ async function summarizeSources(
   if (!raw) {
     throw new Error('Gemini returned no summary output')
   }
-  const parsed = JSON.parse(raw) as {
-    summaries?: { link?: unknown; summary?: unknown }[]
+  const parsed = JSON.parse(raw) as { summary?: unknown }
+  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : ''
+  if (!summary) {
+    throw new Error('Gemini returned no usable summary')
   }
-  const byLink = new Map<string, string>()
-  for (const item of parsed.summaries ?? []) {
-    if (typeof item.link === 'string' && typeof item.summary === 'string') {
-      const summary = item.summary.trim()
-      if (summary) byLink.set(item.link, summary)
-    }
-  }
-  if (byLink.size === 0) {
-    throw new Error('Gemini returned no usable summaries')
-  }
-  return byLink
+  return summary
 }
 
 /**
@@ -290,7 +271,8 @@ export interface ResearchOptions {
 }
 
 /**
- * Research a chunk of transcript and return the top sources with summaries.
+ * Research a chunk of transcript and return one combined summary plus the
+ * links the information came from.
  *
  * Flow:
  *  1. Gemini distills the transcript to the best search keywords (TF fallback) —
@@ -298,16 +280,16 @@ export interface ResearchOptions {
  *  2. only then spin up Browserbase: search DuckDuckGo, scrape the top links
  *     (skipping YouTube and other video pages — there's no article text to read)
  *  3. for each link, navigate there and scrape raw text from the page DOM (no LLM)
- *  4. one final Gemini call turns those scraped pages into teacher-style
- *     summaries that tie each source back to the transcript chunk.
+ *  4. one final Gemini call synthesizes those scraped pages into a single
+ *     teacher-style summary that ties the research back to the transcript chunk.
  */
 export async function researchTopic(
   text: string,
   options: ResearchOptions = {},
-): Promise<{ keywords: string[]; results: ResearchResult[] }> {
+): Promise<{ keywords: string[]; summary: string; links: string[] }> {
   const topN = options.topN ?? TOP_N
   if (!text.trim()) {
-    return { keywords: [], results: [] }
+    return { keywords: [], summary: '', links: [] }
   }
 
   // 1. Pick the search keywords with a plain Gemini call (no browser). Prefer
@@ -322,7 +304,7 @@ export async function researchTopic(
   }
   const query = buildQuery(keywords)
   if (!query.trim()) {
-    return { keywords, results: [] }
+    return { keywords, summary: '', links: [] }
   }
 
   // Only now do we need a browser — reserve Browserbase for the actual web work.
@@ -379,27 +361,23 @@ export async function researchTopic(
       }
     }
 
+    const links = scraped.map((s) => s.link)
     if (scraped.length === 0) {
-      return { keywords, results: [] }
+      return { keywords, summary: '', links }
     }
 
-    // 5. One final Gemini call turns the scraped pages into teacher-style
-    // summaries tied back to the transcript. If it fails, fall back to the raw
-    // scraped text so the user still gets usable sources.
-    let summaries: Map<string, string>
+    // 5. One final Gemini call synthesizes the scraped pages into a single
+    // teacher-style summary tied back to the transcript. If it fails, fall back
+    // to the concatenated raw scraped text so the user still gets something.
+    let summary: string
     try {
-      summaries = await summarizeSources(text, scraped)
+      summary = await summarizeSources(text, scraped)
     } catch (err) {
       console.error('Gemini summarization failed, using raw scraped text:', err)
-      summaries = new Map(scraped.map((s) => [s.link, s.content]))
+      summary = scraped.map((s) => s.content).join('\n\n')
     }
 
-    const results: ResearchResult[] = scraped.map((s) => ({
-      link: s.link,
-      summary: summaries.get(s.link) ?? s.content,
-    }))
-
-    return { keywords, results }
+    return { keywords, summary, links }
   } finally {
     await stagehand.close()
   }
