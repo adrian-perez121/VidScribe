@@ -4,6 +4,7 @@ import type {
   VideoListResponse,
   VidscribeNote,
   ChatResponse,
+  TranscriptWindow,
 } from '@vid-mark/shared'
 
 // Thin fetch wrappers around the backend video/notes endpoints. Notes calls are
@@ -107,6 +108,27 @@ export async function saveNote(note: VidscribeNote): Promise<void> {
 /** Remove a note from the database. Best-effort. */
 export async function deleteNote(id: string): Promise<void> {
   await fetch(`/api/notes/${id}`, { method: 'DELETE' })
+}
+
+/**
+ * Fetch transcript segments around a timestamp (default radius 15s). Throws
+ * if the video has no stored transcript (404) or the request otherwise fails
+ * — callers should treat this as best-effort and not block on it.
+ */
+export async function getTranscriptWindow(
+  videoId: string,
+  timestamp: number,
+  radius?: number,
+): Promise<TranscriptWindow> {
+  const params = new URLSearchParams({ timestamp: String(timestamp) })
+  if (radius !== undefined) params.set('radius', String(radius))
+
+  const res = await fetch(`/api/videos/${videoId}/transcript/window?${params}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Transcript window failed (${res.status})`)
+  }
+  return (await res.json()) as TranscriptWindow
 }
 
 /**

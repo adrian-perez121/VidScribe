@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VidscribeNote } from '@vid-mark/shared'
-import { getVideo, saveNote, deleteNote } from '../lib/api'
+import { getVideo, saveNote, deleteNote, getTranscriptWindow } from '../lib/api'
 
 // The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
 // only) and uploaded videos (localStorage + database).
@@ -195,6 +195,31 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
     persistNote(updated)
   }
 
+  /**
+   * Best-effort: fetch transcript context around a note's timestamp and merge
+   * it in once it arrives. Only `note.id`/`note.timestampSec` are used, so
+   * it's safe to call with any snapshot of the note. Never blocks note
+   * creation and never surfaces an error to the user — the demo workspace has
+   * no transcript at all (persist is false), and an uploaded video may not
+   * have been transcribed yet, both of which are expected, silent no-ops.
+   */
+  function attachTranscriptContext(note: Pick<VidscribeNote, 'id' | 'timestampSec'>) {
+    if (!persist) return
+    getTranscriptWindow(videoId, note.timestampSec)
+      .then((window) => {
+        if (!window.context) return
+        setNotes((prev) => {
+          const next = prev.map((n) =>
+            n.id === note.id ? { ...n, transcriptContext: window.context } : n,
+          )
+          const merged = next.find((n) => n.id === note.id)
+          if (merged) persistNote(merged)
+          return next
+        })
+      })
+      .catch((err) => console.error('Could not attach transcript context:', err))
+  }
+
   function handleTextNoteClick() {
     const video = videoRef.current
     if (!video) return
@@ -228,6 +253,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       createdAt: new Date().toISOString(),
     }
     addNote(note)
+    attachTranscriptContext(note)
     setIsComposerOpen(false)
   }
 
@@ -268,6 +294,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       createdAt: new Date().toISOString(),
     }
     addNote(note)
+    attachTranscriptContext(note)
     setIsVisualComposerOpen(false)
 
     // Reuse the existing Lens crop-selection flow as-is — it works on any note.
@@ -347,6 +374,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
           createdAt: new Date().toISOString(),
         }
         addNote(note)
+        attachTranscriptContext(note)
         setVoiceState('idle')
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Could not save voice note'
@@ -473,6 +501,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
       }
 
       updateNote({ ...note, aiExplanation: data.explanation, imageDataUrl: frame.dataUrl })
+      if (!note.transcriptContext) attachTranscriptContext(note)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lens request failed'
       setLensErrors((prev) => ({ ...prev, [note.id]: message }))
@@ -514,6 +543,7 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
         researchSummary: data.summary,
         researchLinks: Array.isArray(data.links) ? data.links : undefined,
       })
+      if (!note.transcriptContext) attachTranscriptContext(note)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Research request failed'
       setResearchErrors((prev) => ({ ...prev, [note.id]: message }))
