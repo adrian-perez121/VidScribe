@@ -12,12 +12,6 @@ function AppHeader() {
         <p className="text-sm text-gray-400">video notes that remember the moment</p>
       </Link>
       <div className="flex items-center gap-2">
-        <Link
-          to="/dashboard"
-          className="rounded-md border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
-        >
-          Dashboard
-        </Link>
         <UploadButton />
       </div>
     </header>

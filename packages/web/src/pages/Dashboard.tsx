@@ -165,9 +165,6 @@ function Dashboard() {
         {status === 'ready' && error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {/* The hardcoded demo, always available as a static card (no delete). */}
-          <VideoCard to="/" title="Cell physiology (demo)" thumbnailDataUrl={null} badge="demo" />
-
           {videos.map((video) => (
             <VideoCard
               key={video.id}
