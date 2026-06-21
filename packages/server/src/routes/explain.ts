@@ -86,7 +86,9 @@ Otherwise, explain the concept directly: what it means, why it matters, and what
 
 If part of the image is cut off, such as an axis label, a definition mid-sentence, or a term introduced before this frame, say so explicitly rather than guessing.
 
-Write in plain prose. Do not use markdown formatting, bold text, bullet points, dashes, or em-dashes. Use plain sentences and paragraphs only.`,
+Write in plain prose. Do not use markdown formatting, bold text, bullet points, dashes, or em-dashes. Use plain sentences and paragraphs only.
+
+Keep your response under 100 words.`,
             },
           ],
         },
