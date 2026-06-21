@@ -289,11 +289,11 @@ function Home() {
         <p className="text-sm text-gray-400">video notes that remember the moment</p>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 overflow-hidden p-6 lg:flex-row">
-        <section className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6 lg:flex-row lg:overflow-hidden">
+        <section className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
           <div
             ref={videoBoxRef}
-            className="relative min-h-[35vh] flex-1 overflow-hidden rounded-lg border border-gray-800 bg-black lg:min-h-0"
+            className="relative h-[40vh] overflow-hidden rounded-lg border border-gray-800 bg-black lg:h-auto lg:min-h-0 lg:flex-1"
           >
             <video
               ref={videoRef}
