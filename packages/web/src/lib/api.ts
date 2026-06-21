@@ -6,6 +6,8 @@ import type {
   ChatResponse,
   TranscriptWindow,
   VideoTranscript,
+  StudyGuide,
+  StudyGuideResponse,
 } from '@vid-mark/shared'
 
 // Thin fetch wrappers around the backend video/notes endpoints. Notes calls are
@@ -150,6 +152,25 @@ export async function generateTranscript(videoId: string): Promise<VideoTranscri
     throw new Error(data?.error ?? `Failed to generate transcript (${res.status})`)
   }
   return (await res.json()) as VideoTranscript
+}
+
+/**
+ * Generate a study guide from a video's notes/lens/research/transcript.
+ * Omit `videoId` to build from the whole library. Throws with the backend's
+ * error message on failure, including the 404 "no material yet" case.
+ */
+export async function getStudyGuide(videoId?: string): Promise<StudyGuide> {
+  const res = await fetch('/api/study-guide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(videoId ? { video_id: videoId } : {}),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to generate study guide (${res.status})`)
+  }
+  const data = (await res.json()) as StudyGuideResponse
+  return data.guide
 }
 
 /**
