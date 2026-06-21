@@ -6,6 +6,28 @@ export interface HealthResponse {
   time: string
 }
 
+export type VidscribeNoteKind = 'text' | 'voice' | 'visual' | 'browserbase'
+
+export type VidscribeNote = {
+  id: string
+  videoId: string
+  timestampSec: number
+  kind: VidscribeNoteKind
+  text: string
+  title?: string
+  parentNoteId?: string
+  imageDataUrl?: string
+  transcriptContext?: string
+  aiExplanation?: string
+  browserbaseMode?: 'beginner' | 'advanced'
+  sources?: {
+    title: string
+    url: string
+    summary: string
+  }[]
+  createdAt: string
+}
+
 // --- Research service ---------------------------------------------------------
 // The research service takes a chunk of lecture transcript, filters it down to
 // keywords, searches the web, and returns a summary for each of the top sites.

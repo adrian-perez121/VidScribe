@@ -1,66 +1,111 @@
-# React Chrome Extension Template
+# Vid-Mark
 
-This is a template for creating a Chrome extension using React and [Vite](https://vitejs.dev/) with TypeScript.
+A web app that lets users take cropped screenshots from YouTube videos, ask a question about them, and receive plain-language AI explanations powered by Claude.
 
+## Project Structure
 
-## Getting Started
+```
+packages/
+  server/   — Hono + TypeScript API server
+  web/      — React frontend
+  shared/   — Shared TypeScript types
+```
 
-### Prerequisites
+## Prerequisites
 
-Make sure you have [Node.js](https://nodejs.org/) (version 18+ or 20+) installed on your machine.
+- Node.js 18+
+- A running Postgres database
+- An Anthropic API key (get one at https://console.anthropic.com/)
 
-### Setup
+## Setup
 
-1. Clone or fork the repository :
+1. Install dependencies:
 
-    ```sh
-    # To clone
-    git clone https://github.com/5tigerjelly/chrome-extension-react-template
-    cd chrome-extension-react-template
-    ```
+   ```sh
+   npm install
+   ```
 
-2. Install the dependencies:
+2. Create `packages/server/.env` from the sample:
 
-    ```sh
-    npm install
-    ```
+   ```sh
+   cp packages/server/.env.sample packages/server/.env
+   ```
 
-## 🏗️ Development
+3. Fill in the values in `packages/server/.env`:
 
-To start the development server:
+   ```
+   DATABASE_URL="postgres://..."
+   DIRECT_URL="postgres://..."
+   ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+
+4. Run database migrations:
+
+   ```sh
+   npx prisma migrate deploy --schema=packages/server/prisma/schema.prisma
+   ```
+
+## Development
+
+Start both the API server (port 3000) and the Vite dev server (port 5173) together:
 
 ```sh
 npm run dev
 ```
 
-This will start the Vite development server and open your default browser.
+Or start them separately:
 
-## 📦 Build 
+```sh
+npm run dev:server   # API only
+npm run dev:web      # Frontend only
+```
 
-To create a production build:
+## API Endpoints
+
+### `GET /api/health`
+
+Returns server status.
+
+```json
+{ "status": "ok", "time": "2026-06-20T00:00:00.000Z" }
+```
+
+### `POST /api/explain`
+
+Accepts a cropped screenshot and a question. Returns a plain-language explanation from Claude.
+
+**Request** — `multipart/form-data`:
+| Field    | Type   | Required | Description                  |
+|----------|--------|----------|------------------------------|
+| `image`  | File   | Yes      | PNG screenshot               |
+| `prompt` | String | Yes      | The user's question          |
+
+**Success response** (`200`):
+```json
+{ "explanation": "..." }
+```
+
+**Error responses**:
+| Status | Meaning                                    |
+|--------|--------------------------------------------|
+| `400`  | Missing field or image rejected by model   |
+| `429`  | Claude rate limit hit — retry shortly      |
+| `500`  | Unexpected server error                    |
+
+**Example with curl:**
+
+```sh
+curl -X POST http://localhost:3000/api/explain \
+  -F "image=@/path/to/screenshot.png" \
+  -F "prompt=What does this graph show?"
+```
+
+## Build
 
 ```sh
 npm run build
 ```
 
-This will generate the build files in the `build` directory.
-
-## 📂 Load Extension in Chrome
-
-1. Open Chrome and navigate to `chrome://extensions/`.
-2. Enable "Developer mode" using the toggle switch in the top right corner.
-3. Click "Load unpacked" and select the `build` directory.
-
-Your React app should now be loaded as a Chrome extension!
-
-## 🗂️ Project Structure
-
-- `public/`: Contains static files and the `manifest.json`.
-- `src/`: Contains the React app source code.
-- `vite.config.ts`: Vite configuration file.
-- `tsconfig.json`: TypeScript configuration file.
-- `package.json`: Contains the project dependencies and scripts.
-
 ## License
 
-This project is licensed under the MIT License.
+MIT
