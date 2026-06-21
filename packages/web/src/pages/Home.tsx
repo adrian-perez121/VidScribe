@@ -93,10 +93,19 @@ function captureVideoFrame(
   return { blob: new Blob([bytes], { type: 'image/png' }), dataUrl }
 }
 
+/** MIME types to try for MediaRecorder, in order of preference. */
+const PREFERRED_AUDIO_MIME_TYPES = ['audio/webm', 'audio/ogg', 'audio/mp4']
+
+function pickAudioMimeType(): string | undefined {
+  return PREFERRED_AUDIO_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+}
+
 function Home() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const videoBoxRef = useRef<HTMLDivElement | null>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
   const [notes, setNotes] = useState<VidscribeNote[]>(loadNotes)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [draftTimestamp, setDraftTimestamp] = useState(0)
@@ -105,6 +114,8 @@ function Home() {
   const [lensErrors, setLensErrors] = useState<Record<string, string>>({})
   const [lensNote, setLensNote] = useState<VidscribeNote | null>(null)
   const [selectionRect, setSelectionRect] = useState<NormalizedRect | null>(null)
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'saving' | 'error'>('idle')
+  const [voiceError, setVoiceError] = useState<string | null>(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
@@ -155,6 +166,87 @@ function Home() {
     if (!video) return
     video.currentTime = note.timestampSec
     video.play().catch(() => {})
+  }
+
+  /**
+   * Turn recorded audio into a transcript via a REST upload to the backend,
+   * which forwards it to Deepgram's prerecorded speech-to-text API. This is a
+   * deliberately small seam: a later milestone can replace this body with a
+   * Deepgram Flux streaming call without touching the recording/UI code above.
+   */
+  async function transcribeRecording(chunks: Blob[], mimeType: string): Promise<string> {
+    const blob = new Blob(chunks, { type: mimeType })
+    const extension = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+
+    const formData = new FormData()
+    formData.append('audio', blob, `voice-note.${extension}`)
+
+    const res = await fetch('/api/deepgram/voice-note', { method: 'POST', body: formData })
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? `Transcription failed (${res.status})`)
+    }
+    if (!data || typeof data.transcript !== 'string') {
+      throw new Error('Transcription response was missing a transcript')
+    }
+    return data.transcript
+  }
+
+  async function handleVoiceNoteClick() {
+    const video = videoRef.current
+    if (!video) return
+    video.pause()
+    const timestampSec = video.currentTime
+    setVoiceError(null)
+
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Microphone permission was denied'
+      setVoiceError(message)
+      setVoiceState('error')
+      return
+    }
+
+    mediaStreamRef.current = stream
+    const chunks: Blob[] = []
+    const mimeType = pickAudioMimeType()
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data)
+    }
+    recorder.onstop = async () => {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+      setVoiceState('saving')
+      try {
+        const transcript = await transcribeRecording(chunks, recorder.mimeType || 'audio/webm')
+        const note: VidscribeNote = {
+          id: crypto.randomUUID(),
+          videoId: VIDEO_ID,
+          timestampSec,
+          kind: 'voice',
+          text: transcript,
+          createdAt: new Date().toISOString(),
+        }
+        setNotes((prev) => [...prev, note].sort((a, b) => a.timestampSec - b.timestampSec))
+        setVoiceState('idle')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not save voice note'
+        setVoiceError(message)
+        setVoiceState('error')
+      }
+    }
+
+    mediaRecorderRef.current = recorder
+    recorder.start()
+    setVoiceState('recording')
+  }
+
+  function handleStopRecording() {
+    mediaRecorderRef.current?.stop()
   }
 
   async function handleExplainVisualClick(note: VidscribeNote) {
@@ -351,6 +443,31 @@ function Home() {
             </div>
           )}
 
+          {voiceState === 'recording' && (
+            <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
+              <p className="text-sm text-red-400">● Recording voice note...</p>
+              <button
+                type="button"
+                onClick={handleStopRecording}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+              >
+                Stop
+              </button>
+            </div>
+          )}
+
+          {voiceState === 'saving' && (
+            <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-3 text-sm text-gray-400">
+              Saving voice note…
+            </div>
+          )}
+
+          {voiceState === 'error' && voiceError && (
+            <div className="shrink-0 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">
+              {voiceError}
+            </div>
+          )}
+
           <div className="flex shrink-0 flex-wrap gap-2">
             <button
               type="button"
@@ -361,10 +478,11 @@ function Home() {
             </button>
             <button
               type="button"
-              disabled
-              className="cursor-not-allowed rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-500"
+              onClick={handleVoiceNoteClick}
+              disabled={voiceState === 'recording' || voiceState === 'saving'}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Voice Note · coming soon
+              Voice Note
             </button>
             <button
               type="button"
@@ -441,7 +559,7 @@ function Home() {
                         {formatTimestamp(note.timestampSec)}
                       </span>
                       <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs text-indigo-300">
-                        Text
+                        {note.kind === 'voice' ? 'Voice' : 'Text'}
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-gray-200">{note.text}</p>

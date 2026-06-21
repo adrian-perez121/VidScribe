@@ -6,6 +6,7 @@ import type {
 } from '@vid-mark/shared'
 import { researchTopic } from '../../lib/research.js'
 import { explainRoute } from './explain.js'
+import { deepgramRoute } from './deepgram.js'
 
 export const api = new Hono()
 
@@ -31,3 +32,4 @@ api.post('/research', async (c) => {
   return c.json(response)
 })
 api.route('/explain', explainRoute)
+api.route('/deepgram', deepgramRoute)
