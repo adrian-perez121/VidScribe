@@ -10,6 +10,7 @@ import type {
   VidscribeNote,
   VideoTranscript,
   TranscriptSegment,
+  TranscriptWindow,
 } from '@vid-mark/shared'
 import {
   getDb,
@@ -235,6 +236,59 @@ videosRoute.post('/:id/transcript', async (c) => {
       502,
     )
   }
+})
+
+/** Default and only-if-unspecified radius (seconds) for the transcript window endpoint. */
+const DEFAULT_WINDOW_RADIUS_SEC = 15
+
+// GET /api/videos/:id/transcript/window?timestamp=42&radius=15 — segments
+// overlapping [timestamp-radius, timestamp+radius], plus a joined context
+// string. Read-only against the stored transcript; never calls Deepgram.
+videosRoute.get('/:id/transcript/window', async (c) => {
+  const id = c.req.param('id')
+  if (!toObjectId(id)) return c.json({ error: 'Invalid video id' }, 400)
+
+  const timestampRaw = c.req.query('timestamp')
+  if (timestampRaw === undefined || timestampRaw === '') {
+    return c.json({ error: 'Query param "timestamp" is required (seconds)' }, 400)
+  }
+  const timestamp = Number(timestampRaw)
+  if (!Number.isFinite(timestamp) || timestamp < 0) {
+    return c.json({ error: 'Query param "timestamp" must be a non-negative number' }, 400)
+  }
+
+  const radiusRaw = c.req.query('radius')
+  let radius = DEFAULT_WINDOW_RADIUS_SEC
+  if (radiusRaw !== undefined && radiusRaw !== '') {
+    radius = Number(radiusRaw)
+    if (!Number.isFinite(radius) || radius < 0) {
+      return c.json({ error: 'Query param "radius" must be a non-negative number' }, 400)
+    }
+  }
+
+  const transcriptsCol = await getTranscriptsCollection()
+  const doc = await transcriptsCol.findOne({ _id: id })
+  if (!doc) {
+    return c.json({ error: 'No transcript exists yet for this video' }, 404)
+  }
+
+  const windowStartSec = Math.max(0, timestamp - radius)
+  const windowEndSec = timestamp + radius
+  const segments = doc.segments.filter(
+    (s) => s.endSec >= windowStartSec && s.startSec <= windowEndSec,
+  )
+  const context = segments.map((s) => s.text).join(' ')
+
+  const window: TranscriptWindow = {
+    videoId: id,
+    timestamp,
+    radius,
+    windowStartSec,
+    windowEndSec,
+    segments,
+    context,
+  }
+  return c.json(window)
 })
 
 // GET /api/videos/:id/transcript — return a previously generated transcript.

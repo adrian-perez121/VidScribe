@@ -114,6 +114,18 @@ export interface ChatResponse {
   sources: ChatSource[]
 }
 
+/** Response from GET /api/videos/:id/transcript/window — segments around a timestamp. */
+export interface TranscriptWindow {
+  videoId: string
+  timestamp: number
+  radius: number
+  windowStartSec: number
+  windowEndSec: number
+  segments: TranscriptSegment[]
+  /** The overlapping segments' text, joined with spaces, ready to drop into a prompt. */
+  context: string
+}
+
 // --- Research service ---------------------------------------------------------
 // The research service takes a chunk of lecture transcript, filters it down to
 // keywords, searches the web, scrapes the top sites, and returns a single
