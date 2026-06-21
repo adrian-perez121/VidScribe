@@ -8,6 +8,10 @@ import type {
   VideoTranscript,
   StudyGuide,
   StudyGuideResponse,
+  Flashcard,
+  FlashcardGrade,
+  FlashcardsResponse,
+  ReviewFlashcardResponse,
 } from '@vid-mark/shared'
 
 // Thin fetch wrappers around the backend video/notes endpoints. Notes calls are
@@ -171,6 +175,59 @@ export async function getStudyGuide(videoId?: string): Promise<StudyGuide> {
   }
   const data = (await res.json()) as StudyGuideResponse
   return data.guide
+}
+
+/**
+ * Generate (and persist) flashcards from a video's notes/lens/research/transcript.
+ * For a scoped video this replaces that video's existing cards. Throws with the
+ * backend's error message on failure, including the 404 "no material yet" case.
+ */
+export async function generateFlashcards(videoId?: string, count?: number): Promise<Flashcard[]> {
+  const res = await fetch('/api/flashcards/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...(videoId ? { video_id: videoId } : {}),
+      ...(count !== undefined ? { count } : {}),
+    }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to generate flashcards (${res.status})`)
+  }
+  const data = (await res.json()) as FlashcardsResponse
+  return data.cards
+}
+
+/** List stored flashcards, optionally scoped to a video and/or only-due. */
+export async function listFlashcards(videoId?: string, dueOnly?: boolean): Promise<Flashcard[]> {
+  const params = new URLSearchParams()
+  if (videoId) params.set('video_id', videoId)
+  if (dueOnly) params.set('due', 'true')
+  const qs = params.toString()
+
+  const res = await fetch(`/api/flashcards${qs ? `?${qs}` : ''}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to load flashcards (${res.status})`)
+  }
+  const data = (await res.json()) as FlashcardsResponse
+  return data.cards
+}
+
+/** Review a flashcard (SM-2 reschedule); returns the updated card. */
+export async function reviewFlashcard(id: string, grade: FlashcardGrade): Promise<Flashcard> {
+  const res = await fetch(`/api/flashcards/${id}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grade }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Failed to review flashcard (${res.status})`)
+  }
+  const data = (await res.json()) as ReviewFlashcardResponse
+  return data.card
 }
 
 /**

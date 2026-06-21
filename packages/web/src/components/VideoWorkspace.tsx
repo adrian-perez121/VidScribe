@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { VidscribeNote, VideoTranscript, StudyGuide } from '@vid-mark/shared'
+import type {
+  VidscribeNote,
+  VideoTranscript,
+  StudyGuide,
+  Flashcard,
+  FlashcardGrade,
+} from '@vid-mark/shared'
 import {
   getVideo,
   saveNote,
@@ -8,6 +14,9 @@ import {
   getTranscript,
   generateTranscript,
   getStudyGuide,
+  generateFlashcards,
+  listFlashcards,
+  reviewFlashcard,
 } from '../lib/api'
 
 // The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
@@ -179,10 +188,17 @@ function VideoWorkspace({
   const [transcriptGenerating, setTranscriptGenerating] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null)
-  const [isStudyGuideOpen] = useState(false)
+  const [isStudyGuideOpen, setIsStudyGuideOpen] = useState(false)
   const [studyGuide, setStudyGuide] = useState<StudyGuide | null>(null)
   const [studyGuideLoading, setStudyGuideLoading] = useState(false)
   const [studyGuideError, setStudyGuideError] = useState<string | null>(null)
+  const [isFlashcardsOpen, setIsFlashcardsOpen] = useState(false)
+  const [flashcards, setFlashcards] = useState<Flashcard[] | null>(null)
+  const [flashcardsLoading, setFlashcardsLoading] = useState(false)
+  const [flashcardsGenerating, setFlashcardsGenerating] = useState(false)
+  const [flashcardsError, setFlashcardsError] = useState<string | null>(null)
+  const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [isAnswerShown, setIsAnswerShown] = useState(false)
 
   // Notes for THIS video only (the localStorage array holds every video's notes).
   const videoNotes = notes
@@ -295,6 +311,68 @@ function VideoWorkspace({
     } finally {
       setStudyGuideLoading(false)
     }
+  }
+
+  // Fetch existing flashcards once, the first time the panel is opened (not on
+  // every toggle) — mirrors the Transcript/Study Guide panels' lazy-load shape.
+  useEffect(() => {
+    if (!persist || !isFlashcardsOpen || flashcards !== null) return
+    let cancelled = false
+    setFlashcardsLoading(true)
+    setFlashcardsError(null)
+    listFlashcards(videoId)
+      .then((cards) => {
+        if (cancelled) return
+        setFlashcards(cards)
+        setCurrentCardIndex(0)
+        setIsAnswerShown(false)
+      })
+      .catch((err) => {
+        if (!cancelled) setFlashcards([])
+        console.error('Could not load flashcards:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setFlashcardsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [persist, isFlashcardsOpen, videoId, flashcards])
+
+  /** Used for both the first generate and "Regenerate flashcards". */
+  async function handleGenerateFlashcards() {
+    setFlashcardsGenerating(true)
+    setFlashcardsError(null)
+    try {
+      const cards = await generateFlashcards(videoId)
+      setFlashcards(cards)
+      setCurrentCardIndex(0)
+      setIsAnswerShown(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not generate flashcards'
+      setFlashcardsError(message)
+    } finally {
+      setFlashcardsGenerating(false)
+    }
+  }
+
+  async function handleGradeCard(grade: FlashcardGrade) {
+    const card = flashcards?.[currentCardIndex]
+    if (!card) return
+    try {
+      const updated = await reviewFlashcard(card.id, grade)
+      setFlashcards((prev) => (prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev))
+    } catch (err) {
+      // Best-effort, like note persistence elsewhere — don't block the review flow.
+      console.error('Could not save flashcard review:', err)
+    }
+    setCurrentCardIndex((i) => i + 1)
+    setIsAnswerShown(false)
+  }
+
+  function handleRestartReview() {
+    setCurrentCardIndex(0)
+    setIsAnswerShown(false)
   }
 
   /** Mirror a note to the DB when this workspace is DB-backed. Best-effort. */
@@ -829,13 +907,24 @@ function VideoWorkspace({
               {isTranscriptOpen ? 'Hide Transcript' : 'Transcript'}
             </button>
           )}
-          <button
-            type="button"
-            disabled
-            className="cursor-not-allowed rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-400 dark:border-gray-800 dark:text-gray-500"
-          >
-            Study Guide · coming soon
-          </button>
+          {persist && (
+            <button
+              type="button"
+              onClick={() => setIsStudyGuideOpen((prev) => !prev)}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              {isStudyGuideOpen ? 'Hide Study Guide' : 'Study Guide'}
+            </button>
+          )}
+          {persist && (
+            <button
+              type="button"
+              onClick={() => setIsFlashcardsOpen((prev) => !prev)}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              {isFlashcardsOpen ? 'Hide Flashcards' : 'Flashcards'}
+            </button>
+          )}
         </div>
 
         {persist && isTranscriptOpen && (
@@ -926,6 +1015,112 @@ function VideoWorkspace({
                 >
                   Generate study guide
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {persist && isFlashcardsOpen && (
+          <div className="flex max-h-64 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-900 p-3">
+            <div className="flex shrink-0 items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Flashcards
+              </p>
+              {flashcards && flashcards.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleGenerateFlashcards}
+                  disabled={flashcardsGenerating}
+                  className="text-xs font-medium text-indigo-400 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {flashcardsGenerating ? 'Regenerating…' : 'Regenerate flashcards'}
+                </button>
+              )}
+            </div>
+
+            {flashcardsLoading || flashcards === null ? (
+              <p className="text-sm text-gray-500">Loading flashcards…</p>
+            ) : flashcards.length === 0 ? (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-sm text-gray-500">
+                  {flashcardsError
+                    ? flashcardsError
+                    : 'No flashcards yet for this video.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleGenerateFlashcards}
+                  disabled={flashcardsGenerating}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {flashcardsGenerating ? 'Generating…' : 'Generate flashcards'}
+                </button>
+              </div>
+            ) : currentCardIndex >= flashcards.length ? (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-sm text-gray-300">Review complete for now.</p>
+                <button
+                  type="button"
+                  onClick={handleRestartReview}
+                  className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                >
+                  Review again
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-gray-500">
+                  Card {currentCardIndex + 1} of {flashcards.length}
+                </p>
+                <div className="rounded-md border border-gray-800 bg-gray-950 p-3">
+                  <p className="text-sm text-gray-100">{flashcards[currentCardIndex].front}</p>
+                  {isAnswerShown && (
+                    <p className="mt-3 border-t border-gray-800 pt-3 text-sm text-gray-300">
+                      {flashcards[currentCardIndex].back}
+                    </p>
+                  )}
+                </div>
+
+                {!isAnswerShown ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsAnswerShown(true)}
+                    className="self-start rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+                  >
+                    Show answer
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleGradeCard('again')}
+                      className="rounded-md border border-red-900 px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-950/40"
+                    >
+                      Again
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGradeCard('hard')}
+                      className="rounded-md border border-amber-900 px-3 py-1.5 text-sm font-medium text-amber-400 hover:bg-amber-950/40"
+                    >
+                      Hard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGradeCard('good')}
+                      className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                    >
+                      Good
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGradeCard('easy')}
+                      className="rounded-md border border-emerald-900 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-950/40"
+                    >
+                      Easy
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
