@@ -3,6 +3,7 @@ import type { VidscribeNote } from '@vid-mark/shared'
 
 const VIDEO_ID = 'cell-physiology-demo'
 const STORAGE_KEY = 'vidscribe:notes:v1'
+const DEFAULT_VISUAL_PROMPT = 'Explain this part of the video in simple study-note terms.'
 
 function loadNotes(): VidscribeNote[] {
   try {
@@ -116,6 +117,11 @@ function Home() {
   const [selectionRect, setSelectionRect] = useState<NormalizedRect | null>(null)
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'saving' | 'error'>('idle')
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [researchLoadingId, setResearchLoadingId] = useState<string | null>(null)
+  const [researchErrors, setResearchErrors] = useState<Record<string, string>>({})
+  const [isVisualComposerOpen, setIsVisualComposerOpen] = useState(false)
+  const [visualDraftTimestamp, setVisualDraftTimestamp] = useState(0)
+  const [visualDraftText, setVisualDraftText] = useState('')
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
@@ -159,6 +165,41 @@ function Home() {
 
   function handleCancel() {
     setIsComposerOpen(false)
+  }
+
+  function handleVisualNoteClick() {
+    const video = videoRef.current
+    if (!video) return
+    video.pause()
+    setVisualDraftTimestamp(video.currentTime)
+    setVisualDraftText('')
+    setIsVisualComposerOpen(true)
+  }
+
+  function handleVisualComposerCancel() {
+    setIsVisualComposerOpen(false)
+  }
+
+  async function handleVisualComposerSubmit() {
+    const video = videoRef.current
+    if (!video) return
+    const text = visualDraftText.trim() || DEFAULT_VISUAL_PROMPT
+
+    const note: VidscribeNote = {
+      id: crypto.randomUUID(),
+      videoId: VIDEO_ID,
+      timestampSec: visualDraftTimestamp,
+      kind: 'text',
+      text,
+      createdAt: new Date().toISOString(),
+    }
+    setNotes((prev) => [...prev, note].sort((a, b) => a.timestampSec - b.timestampSec))
+    setIsVisualComposerOpen(false)
+
+    // Reuse the existing Lens crop-selection flow as-is — it works on any note.
+    await waitForVideoSeek(video, note.timestampSec)
+    setSelectionRect(null)
+    setLensNote(note)
   }
 
   function handleNoteClick(note: VidscribeNote) {
@@ -374,6 +415,51 @@ function Home() {
     }
   }
 
+  async function handleResearchClick(note: VidscribeNote) {
+    setResearchErrors((prev) => {
+      const rest = { ...prev }
+      delete rest[note.id]
+      return rest
+    })
+    setResearchLoadingId(note.id)
+
+    try {
+      const text = note.aiExplanation ? `${note.text}\n\n${note.aiExplanation}` : note.text
+
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Research request failed (${res.status})`)
+      }
+      if (!data || typeof data.summary !== 'string') {
+        throw new Error('Research response was missing a summary')
+      }
+
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === note.id
+            ? {
+                ...n,
+                researchKeywords: Array.isArray(data.keywords) ? data.keywords : undefined,
+                researchSummary: data.summary,
+                researchLinks: Array.isArray(data.links) ? data.links : undefined,
+              }
+            : n,
+        ),
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Research request failed'
+      setResearchErrors((prev) => ({ ...prev, [note.id]: message }))
+    } finally {
+      setResearchLoadingId(null)
+    }
+  }
+
   return (
     <main className="flex h-screen flex-col bg-gray-950 text-gray-100">
       <header className="shrink-0 border-b border-gray-800 px-6 py-4">
@@ -417,6 +503,38 @@ function Home() {
               </div>
             )}
           </div>
+
+          {isVisualComposerOpen && (
+            <div className="shrink-0 rounded-lg border border-gray-800 bg-gray-900 p-4">
+              <p className="mb-2 text-sm text-gray-400">
+                Visual note at {formatTimestamp(visualDraftTimestamp)}
+              </p>
+              <textarea
+                autoFocus
+                value={visualDraftText}
+                onChange={(e) => setVisualDraftText(e.target.value)}
+                placeholder={DEFAULT_VISUAL_PROMPT}
+                rows={3}
+                className="w-full rounded-md border border-gray-700 bg-gray-950 p-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none"
+              />
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleVisualComposerCancel}
+                  className="rounded-md border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVisualComposerSubmit}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
 
           {lensNote && (
             <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
@@ -486,10 +604,11 @@ function Home() {
             </button>
             <button
               type="button"
-              disabled
-              className="cursor-not-allowed rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-500"
+              onClick={handleVisualNoteClick}
+              disabled={!!lensNote}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Lens · coming soon
+              Visual Note
             </button>
             <button
               type="button"
@@ -581,8 +700,45 @@ function Home() {
                     </div>
                   )}
 
-                  {note.kind === 'text' && (
-                    <div className="mt-2">
+                  {note.researchSummary && (
+                    <div className="mt-2 border-t border-gray-800 pt-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Research
+                      </p>
+                      {note.researchKeywords && note.researchKeywords.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {note.researchKeywords.map((keyword) => (
+                            <span
+                              key={keyword}
+                              className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-2 text-sm text-gray-200">{note.researchSummary}</p>
+                      {note.researchLinks && note.researchLinks.length > 0 && (
+                        <ul className="mt-2 flex flex-col gap-1">
+                          {note.researchLinks.slice(0, 5).map((link) => (
+                            <li key={link}>
+                              <a
+                                href={link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block truncate text-xs text-indigo-400 hover:underline"
+                              >
+                                {link}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => handleExplainVisualClick(note)}
@@ -595,11 +751,26 @@ function Home() {
                             ? 'Re-explain visual'
                             : 'Explain visual'}
                       </button>
-                      {lensErrors[note.id] && (
-                        <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleResearchClick(note)}
+                        disabled={researchLoadingId === note.id}
+                        className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {researchLoadingId === note.id
+                          ? 'Researching…'
+                          : note.researchSummary
+                            ? 'Re-research this'
+                            : 'Research this'}
+                      </button>
                     </div>
-                  )}
+                    {lensErrors[note.id] && (
+                      <p className="mt-1 text-xs text-red-400">{lensErrors[note.id]}</p>
+                    )}
+                    {researchErrors[note.id] && (
+                      <p className="mt-1 text-xs text-red-400">{researchErrors[note.id]}</p>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
