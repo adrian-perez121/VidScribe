@@ -3,6 +3,7 @@ import type {
   VideoDetail,
   VideoListResponse,
   VidscribeNote,
+  ChatResponse,
 } from '@vid-mark/shared'
 
 // Thin fetch wrappers around the backend video/notes endpoints. Notes calls are
@@ -106,4 +107,25 @@ export async function saveNote(note: VidscribeNote): Promise<void> {
 /** Remove a note from the database. Best-effort. */
 export async function deleteNote(id: string): Promise<void> {
   await fetch(`/api/notes/${id}`, { method: 'DELETE' })
+}
+
+/**
+ * Ask the study chatbot a question; `sessionId` threads follow-up turns. Pass
+ * `videoId` to scope the answer to a single video (used on a video's page).
+ */
+export async function sendChat(
+  message: string,
+  sessionId: string,
+  videoId?: string,
+): Promise<ChatResponse> {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, session_id: sessionId, video_id: videoId }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? `Chat failed (${res.status})`)
+  }
+  return (await res.json()) as ChatResponse
 }
