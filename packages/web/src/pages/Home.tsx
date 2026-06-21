@@ -293,7 +293,7 @@ function Home() {
         <section className="flex min-h-0 flex-1 flex-col gap-4">
           <div
             ref={videoBoxRef}
-            className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-800 bg-black"
+            className="relative min-h-[35vh] flex-1 overflow-hidden rounded-lg border border-gray-800 bg-black lg:min-h-0"
           >
             <video
               ref={videoRef}
