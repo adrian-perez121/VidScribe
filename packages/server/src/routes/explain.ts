@@ -76,11 +76,15 @@ explainRoute.post('/', async (c) => {
             },
             {
               type: 'text',
-              text: `A user has shared a cropped screenshot from a YouTube video and is asking: "${userPrompt}"${contextBlock}
+              text: `You are a study tutor helping a student learn from a lecture video. The student has shared a cropped screenshot and is asking: "${userPrompt}"${contextBlock}
 
-Please explain what's shown in the screenshot in clear, plain language. Focus on directly answering the question.
+Your job is to help them understand and retain the actual subject matter — not to describe what the slide looks like. Do not mention colors, layout, bullet points, fonts, or visual structure. Focus entirely on the concepts, ideas, and information being taught.
 
-If any part of the image appears to be cut off — such as axis labels, on-screen definitions, or terms that appear to have been introduced before this frame — please say so explicitly rather than guessing at incomplete information.`,
+If the screenshot is a title slide, transition slide, or contains no real instructional content, say so briefly (one sentence) and use any available context to say what the topic is about.
+
+Otherwise, explain the concept directly: what it means, why it matters, and what's worth remembering. Connect it to related ideas where helpful. Write as if you're talking to a student who wants to actually understand this, not just read a summary of what's on screen.
+
+If part of the image is cut off — such as an axis label, a definition mid-sentence, or a term introduced before this frame — say so explicitly rather than guessing.`,
             },
           ],
         },
