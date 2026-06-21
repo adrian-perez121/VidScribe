@@ -31,6 +31,39 @@ export type VidscribeNote = {
   createdAt: string
 }
 
+// --- Videos -------------------------------------------------------------------
+// Videos are stored in MongoDB via GridFS (the file bytes) plus a small amount
+// of metadata (title, thumbnail) on the GridFS file document. The dashboard
+// lists videos using only their metadata + thumbnail — never the file bytes.
+
+/** A video as shown on the dashboard — metadata + thumbnail only, no bytes. */
+export interface VideoSummary {
+  /** GridFS file id, as a hex string. Also used as the note `videoId`. */
+  id: string
+  /** Human-readable title (defaults to the uploaded file name). */
+  title: string
+  /** A small still frame captured at upload time, as a data URL (or null). */
+  thumbnailDataUrl: string | null
+  /** MIME type of the stored video (e.g. video/mp4). */
+  contentType: string
+  /** Size of the stored video in bytes. */
+  sizeBytes: number
+  /** Duration in seconds, if it could be determined at upload. */
+  durationSec?: number
+  /** ISO timestamp of when the video was uploaded. */
+  createdAt: string
+}
+
+/** A single video plus the notes taken against it (pulled together). */
+export interface VideoDetail extends VideoSummary {
+  notes: VidscribeNote[]
+}
+
+/** Response from GET /api/videos. */
+export interface VideoListResponse {
+  videos: VideoSummary[]
+}
+
 // --- Research service ---------------------------------------------------------
 // The research service takes a chunk of lecture transcript, filters it down to
 // keywords, searches the web, scrapes the top sites, and returns a single
