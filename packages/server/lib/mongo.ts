@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { MongoClient, GridFSBucket, type Db, type Collection } from 'mongodb'
-import type { VidscribeNote, VideoTranscript } from '@vid-mark/shared'
+import type { VidscribeNote, VideoTranscript, Flashcard } from '@vid-mark/shared'
 
 // Server-side MongoDB connection. We use the native driver (not Prisma — Prisma
 // has no GridFS support) so we can stream large video files into GridFS instead
@@ -22,6 +22,9 @@ export type NoteDoc = VidscribeNote & { _id: string }
 
 /** A transcript as stored in Mongo: the shared shape, keyed by videoId. */
 export type TranscriptDoc = VideoTranscript & { _id: string }
+
+/** A flashcard as stored in Mongo, keyed by its own id (_id === card.id). */
+export type FlashcardDoc = Flashcard & { _id: string }
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -107,4 +110,10 @@ export async function getNotesCollection(): Promise<Collection<NoteDoc>> {
 export async function getTranscriptsCollection(): Promise<Collection<TranscriptDoc>> {
   const db = await getDb()
   return db.collection<TranscriptDoc>('transcripts')
+}
+
+/** The collection that stores flashcards (one document per card, _id === card.id). */
+export async function getFlashcardsCollection(): Promise<Collection<FlashcardDoc>> {
+  const db = await getDb()
+  return db.collection<FlashcardDoc>('flashcards')
 }

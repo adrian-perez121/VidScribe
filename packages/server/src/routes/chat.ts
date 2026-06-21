@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import Anthropic from '@anthropic-ai/sdk'
+import type { ChatSource } from '@vid-mark/shared'
 import { search, getVideoDocs } from '../../lib/search.js'
 import { loadHistory, appendTurn } from '../../lib/session.js'
 
@@ -26,14 +27,24 @@ const SOURCE_LABEL: Record<string, string> = {
   note: 'your note',
   browserbase: 'web research',
   lens: 'AI explanation',
+  transcript: 'lecture transcript',
+}
+
+/** Format seconds as m:ss (or h:mm:ss) for the context labels. */
+function formatTime(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = (s % 60).toString().padStart(2, '0')
+  return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
 
 const SYSTEM_PROMPT = `You are a study tutor helping a student review their own lecture videos.
-You are given context passages retrieved from the student's notes, web-research summaries, and AI screenshot explanations. Each passage is labeled with the video it came from.
+You are given context passages retrieved from the student's notes, web-research summaries, AI screenshot explanations, and the lecture transcript. Each passage is labeled with the video it came from, and transcript/note passages also carry a timestamp (the point in the video they come from).
 
 Answer the student's question using ONLY the information in the context passages.
 If the answer is not contained in the context, say you don't have anything on that in their videos yet, and do not invent or guess.
-When you use information, name which video(s) it came from.
+When you use information, name which video(s) it came from. If the student asks where in a video something is covered, point them to the timestamp shown on the relevant passage.
 Write in plain, clear prose without markdown formatting.`
 
 interface ChatBody {
@@ -65,10 +76,14 @@ chatRoute.post('/', async (c) => {
       results = await getVideoDocs(videoId)
     }
 
-    // 2. Build a labeled context block for grounding.
+    // 2. Build a labeled context block for grounding (with timestamps when known).
     const contextBlock = results.length
       ? results
-          .map((r) => `[${SOURCE_LABEL[r.source] ?? r.source} | video=${r.video_title}] ${r.text}`)
+          .map((r) => {
+            const label = SOURCE_LABEL[r.source] ?? r.source
+            const at = r.startSec >= 0 ? ` @ ${formatTime(r.startSec)}` : ''
+            return `[${label}${at} | video=${r.video_title}] ${r.text}`
+          })
           .join('\n\n')
       : '(no relevant content found)'
 
@@ -88,15 +103,21 @@ chatRoute.post('/', async (c) => {
     const block = resp.content[0]
     const answer = block && block.type === 'text' ? block.text : ''
 
-    // 5. Dedupe sources from the RETRIEVED metadata (by video).
+    // 5. Dedupe sources from the RETRIEVED metadata (by video). Results are
+    // ordered closest-first, so the first chunk per video gives the most
+    // relevant moment to jump to.
     const seen = new Set<string>()
-    const sources = results
+    const sources: ChatSource[] = results
       .filter((r) => {
         if (!r.video_id || seen.has(r.video_id)) return false
         seen.add(r.video_id)
         return true
       })
-      .map((r) => ({ video_id: r.video_id, video_title: r.video_title }))
+      .map((r) => ({
+        video_id: r.video_id,
+        video_title: r.video_title,
+        ...(r.startSec >= 0 ? { timestamp_sec: r.startSec } : {}),
+      }))
 
     // 6. Persist this turn for follow-ups.
     if (sessionId) {

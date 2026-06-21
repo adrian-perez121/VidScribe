@@ -10,6 +10,8 @@ import { deepgramRoute } from './deepgram.js'
 import { videosRoute } from './videos.js'
 import { notesRoute } from './notes.js'
 import { chatRoute } from './chat.js'
+import { studyGuideRoute } from './studyGuide.js'
+import { flashcardsRoute } from './flashcards.js'
 
 export const api = new Hono()
 
@@ -72,3 +74,5 @@ api.route('/deepgram', deepgramRoute)
 api.route('/videos', videosRoute)
 api.route('/notes', notesRoute)
 api.route('/chat', chatRoute)
+api.route('/study-guide', studyGuideRoute)
+api.route('/flashcards', flashcardsRoute)

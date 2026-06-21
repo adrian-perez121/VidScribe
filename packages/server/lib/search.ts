@@ -17,9 +17,11 @@ function openaiClient(): OpenAI {
 export interface SearchResult {
   video_id: string
   video_title: string
-  /** 'note' | 'browserbase' | 'lens' */
+  /** 'note' | 'browserbase' | 'lens' | 'transcript' */
   source: string
   text: string
+  /** Point in the video this chunk maps to, in seconds; -1 when none. */
+  startSec: number
   /** Cosine distance — LOWER is closer/more relevant. */
   score: number
 }
@@ -60,7 +62,7 @@ export async function search(
 
   const res = await redis.ft.search('idx:study', query, {
     PARAMS: { BLOB: qbuf },
-    RETURN: ['video_id', 'video_title', 'source', 'text', 'score'],
+    RETURN: ['video_id', 'video_title', 'source', 'start_sec', 'text', 'score'],
     SORTBY: { BY: 'score', DIRECTION: 'ASC' }, // closest first
     DIALECT: 2,
     LIMIT: { from: 0, size: topK },
@@ -71,6 +73,7 @@ export async function search(
     video_title: String(d.value.video_title ?? ''),
     source: String(d.value.source ?? ''),
     text: String(d.value.text ?? ''),
+    startSec: Number(d.value.start_sec ?? -1),
     score: Number(d.value.score ?? 0),
   }))
 }
@@ -84,7 +87,7 @@ export async function search(
 export async function getVideoDocs(videoId: string, limit = 10): Promise<SearchResult[]> {
   await connectRedis()
   const res = await redis.ft.search('idx:study', `@video_id:{${escapeTag(videoId)}}`, {
-    RETURN: ['video_id', 'video_title', 'source', 'text'],
+    RETURN: ['video_id', 'video_title', 'source', 'start_sec', 'text'],
     DIALECT: 2,
     LIMIT: { from: 0, size: limit },
   })
@@ -93,6 +96,7 @@ export async function getVideoDocs(videoId: string, limit = 10): Promise<SearchR
     video_title: String(d.value.video_title ?? ''),
     source: String(d.value.source ?? ''),
     text: String(d.value.text ?? ''),
+    startSec: Number(d.value.start_sec ?? -1),
     score: 0,
   }))
 }

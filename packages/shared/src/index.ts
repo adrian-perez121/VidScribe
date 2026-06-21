@@ -96,6 +96,11 @@ export interface VideoTranscript {
 export interface ChatSource {
   video_id: string
   video_title: string
+  /**
+   * When the answer drew on a timestamped chunk (a transcript segment, or a note
+   * taken at a moment), the point in the video to jump to, in seconds.
+   */
+  timestamp_sec?: number
 }
 
 /** Request body for POST /api/chat. */
@@ -124,6 +129,86 @@ export interface TranscriptWindow {
   segments: TranscriptSegment[]
   /** The overlapping segments' text, joined with spaces, ready to drop into a prompt. */
   context: string
+}
+
+// --- Study guide --------------------------------------------------------------
+// Generated on demand from a video's (or the whole library's) notes, lens
+// explanations, research summaries, and transcript. Not persisted — regenerated
+// each request.
+
+/** One themed section of a study guide. */
+export interface StudyGuideSection {
+  heading: string
+  points: string[]
+}
+
+/** A generated study guide. */
+export interface StudyGuide {
+  title: string
+  overview: string
+  sections: StudyGuideSection[]
+  /** Present when generated for a single video. */
+  videoId?: string
+}
+
+/** Request body for POST /api/study-guide. */
+export interface StudyGuideRequest {
+  /** Omit to build from the whole library; set to scope to one video. */
+  video_id?: string
+}
+
+/** Response from POST /api/study-guide. */
+export interface StudyGuideResponse {
+  guide: StudyGuide
+}
+
+// --- Flashcards (SM-2 spaced repetition) --------------------------------------
+// Generated from the same material as the study guide, then persisted so review
+// scheduling (SM-2) survives across sessions.
+
+/** Anki-style review grades, mapped to SM-2 quality internally. */
+export type FlashcardGrade = 'again' | 'hard' | 'good' | 'easy'
+
+/** A single flashcard plus its SM-2 scheduling state. */
+export interface Flashcard {
+  id: string
+  /** Which video the card came from; absent for whole-library decks. */
+  videoId?: string
+  front: string
+  back: string
+  /** SM-2 ease factor (>= 1.3), starts at 2.5. */
+  ease: number
+  /** Current inter-review interval in days. */
+  intervalDays: number
+  /** Consecutive successful reviews. */
+  repetitions: number
+  /** ISO timestamp when the card is next due for review. */
+  dueAt: string
+  createdAt: string
+  lastReviewedAt?: string
+}
+
+/** Request body for POST /api/flashcards/generate. */
+export interface GenerateFlashcardsRequest {
+  /** Omit to build from the whole library; set to scope to one video. */
+  video_id?: string
+  /** Desired number of cards (clamped server-side). */
+  count?: number
+}
+
+/** Response carrying a set of flashcards. */
+export interface FlashcardsResponse {
+  cards: Flashcard[]
+}
+
+/** Request body for POST /api/flashcards/:id/review. */
+export interface ReviewFlashcardRequest {
+  grade: FlashcardGrade
+}
+
+/** Response from reviewing a card — the updated, rescheduled card. */
+export interface ReviewFlashcardResponse {
+  card: Flashcard
 }
 
 // --- Research service ---------------------------------------------------------
