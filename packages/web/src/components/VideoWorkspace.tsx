@@ -751,13 +751,13 @@ function VideoWorkspace({
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:flex-1 lg:flex-row lg:gap-6 lg:overflow-hidden lg:p-6">
-      <section className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
+      <section className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {title && (
           <h2 className="shrink-0 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
         )}
         <div
           ref={videoBoxRef}
-          className="relative aspect-video w-full overflow-hidden rounded-lg border border-gray-200 bg-black lg:aspect-auto lg:min-h-0 lg:flex-1 dark:border-gray-800"
+          className="relative aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-black dark:border-gray-800"
         >
           <video
             ref={videoRef}
@@ -902,7 +902,7 @@ function VideoWorkspace({
             <button
               type="button"
               onClick={() => setIsTranscriptOpen((prev) => !prev)}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500"
             >
               {isTranscriptOpen ? 'Hide Transcript' : 'Transcript'}
             </button>
@@ -911,7 +911,7 @@ function VideoWorkspace({
             <button
               type="button"
               onClick={() => setIsStudyGuideOpen((prev) => !prev)}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500"
             >
               {isStudyGuideOpen ? 'Hide Study Guide' : 'Study Guide'}
             </button>
@@ -920,7 +920,7 @@ function VideoWorkspace({
             <button
               type="button"
               onClick={() => setIsFlashcardsOpen((prev) => !prev)}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500"
             >
               {isFlashcardsOpen ? 'Hide Flashcards' : 'Flashcards'}
             </button>
@@ -1272,7 +1272,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleExplainVisualClick(note)}
                       disabled={lensLoadingId === note.id || !!lensNote}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 lg:px-2 lg:py-1"
+                      className="rounded-md bg-sky-400 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50 lg:px-2 lg:py-1"
                     >
                       {lensLoadingId === note.id
                         ? 'Explaining…'
@@ -1284,7 +1284,7 @@ function VideoWorkspace({
                       type="button"
                       onClick={() => handleResearchClick(note)}
                       disabled={researchLoadingId === note.id}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 lg:px-2 lg:py-1"
+                      className="rounded-md bg-sky-400 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50 lg:px-2 lg:py-1"
                     >
                       {researchLoadingId === note.id
                         ? 'Researching…'
