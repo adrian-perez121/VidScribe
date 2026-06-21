@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { FlashcardGrade } from '@vid-mark/shared'
-import { generateFlashcards, listFlashcards, reviewFlashcard } from '../../lib/flashcards.js'
+import { generateFlashcards, listFlashcards, listDueFlashcards, reviewFlashcard } from '../../lib/flashcards.js'
 
 // Flashcard endpoints:
 //   POST /api/flashcards/generate    { video_id?, count? } -> { cards }
@@ -29,11 +29,12 @@ flashcardsRoute.post('/generate', async (c) => {
   }
 })
 
-// List stored cards (optionally scoped / only-due).
+// List stored cards. `due=true` uses the Redis due-queue (sorted set); otherwise
+// returns all cards for the scope from Mongo.
 flashcardsRoute.get('/', async (c) => {
   const videoId = c.req.query('video_id') || undefined
   const dueOnly = c.req.query('due') === 'true'
-  const cards = await listFlashcards({ videoId, dueOnly })
+  const cards = dueOnly ? await listDueFlashcards({ videoId }) : await listFlashcards({ videoId })
   return c.json({ cards })
 })
 

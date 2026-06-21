@@ -4,6 +4,13 @@ import { anthropic, textFrom, extractJson } from './anthropic.js'
 import { collectContent } from './contentCollector.js'
 import { getFlashcardsCollection } from './mongo.js'
 import { initialSr, applyGrade } from './sm2.js'
+import {
+  dueQueueUpsert,
+  dueQueueRemove,
+  dueQueueDueIds,
+  dueQueueSize,
+  dueQueueRebuild,
+} from './dueQueue.js'
 
 // Flashcard generation + spaced-repetition review. Cards are generated from the
 // same material as the study guide (notes + lens + research + transcript), then
@@ -58,20 +65,48 @@ export async function generateFlashcards(videoId?: string, count = DEFAULT_COUNT
     }))
 
   const col = await getFlashcardsCollection()
-  if (videoId) await col.deleteMany({ videoId }) // regenerate semantics for a scoped video
-  if (cards.length) await col.insertMany(cards.map((c) => ({ _id: c.id, ...c })))
+  if (videoId) {
+    // Regenerate semantics: drop this video's old cards from Mongo AND the queue.
+    const old = await col.find({ videoId }).toArray()
+    await col.deleteMany({ videoId })
+    await dueQueueRemove(old.map((c) => ({ id: c.id, videoId: c.videoId, dueAt: c.dueAt })))
+  }
+  if (cards.length) {
+    await col.insertMany(cards.map((c) => ({ _id: c.id, ...c })))
+    for (const c of cards) await dueQueueUpsert({ id: c.id, videoId: c.videoId, dueAt: c.dueAt })
+  }
   return cards
 }
 
-/** List stored cards, optionally scoped to a video and/or only those due now. */
-export async function listFlashcards(opts: { videoId?: string; dueOnly?: boolean } = {}): Promise<Flashcard[]> {
+/** List all stored cards, optionally scoped to a video (ordered by due date). */
+export async function listFlashcards(opts: { videoId?: string } = {}): Promise<Flashcard[]> {
   const col = await getFlashcardsCollection()
   const query: Record<string, unknown> = {}
   if (opts.videoId) query.videoId = opts.videoId
-  // dueAt is an ISO-8601 UTC string, so lexicographic <= equals chronological <=.
-  if (opts.dueOnly) query.dueAt = { $lte: new Date().toISOString() }
   const docs = await col.find(query).sort({ dueAt: 1 }).toArray()
   return docs.map(({ _id: _drop, ...card }) => card)
+}
+
+/**
+ * Cards due for review now, soonest first, via the Redis due-queue (sorted set).
+ * The queue is rebuilt from Mongo on first use (or if it's drifted empty).
+ */
+export async function listDueFlashcards(opts: { videoId?: string; limit?: number } = {}): Promise<Flashcard[]> {
+  // Backfill the queue from Mongo the first time (existing cards predate it).
+  if ((await dueQueueSize()) === 0) await dueQueueRebuild()
+
+  const ids = await dueQueueDueIds({ videoId: opts.videoId, limit: opts.limit })
+  if (!ids.length) return []
+
+  const col = await getFlashcardsCollection()
+  const docs = await col.find({ _id: { $in: ids } }).toArray()
+  const byId = new Map(docs.map((d) => [d._id, d]))
+
+  // Preserve the queue's due order; skip any ids no longer in Mongo (stale).
+  return ids
+    .map((id) => byId.get(id))
+    .filter((d): d is NonNullable<typeof d> => Boolean(d))
+    .map(({ _id: _drop, ...card }) => card)
 }
 
 /** Apply an SM-2 review grade to a card and persist the new schedule. Null if not found. */
@@ -85,6 +120,8 @@ export async function reviewFlashcard(id: string, grade: FlashcardGrade): Promis
     grade,
   )
   await col.updateOne({ _id: id }, { $set: sr })
+  // Re-score the card in the due-queue with its new due date.
+  await dueQueueUpsert({ id, videoId: doc.videoId, dueAt: sr.dueAt })
 
   const { _id: _drop, ...card } = doc
   return { ...card, ...sr }
