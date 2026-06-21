@@ -64,6 +64,33 @@ export interface VideoListResponse {
   videos: VideoSummary[]
 }
 
+// --- Study chatbot ------------------------------------------------------------
+// The chatbot answers questions across the student's videos using vector search
+// over their notes / research / lens explanations, grounded with Claude. It
+// returns the video(s) the answer drew from so the UI can link to them.
+
+/** One video an answer was drawn from. */
+export interface ChatSource {
+  video_id: string
+  video_title: string
+}
+
+/** Request body for POST /api/chat. */
+export interface ChatRequest {
+  message: string
+  /** Opaque per-conversation id used to thread follow-up questions. */
+  session_id?: string
+  /** When set, scope retrieval to a single video (e.g. asking from its page). */
+  video_id?: string
+}
+
+/** Response from POST /api/chat. */
+export interface ChatResponse {
+  answer: string
+  /** Deduped videos the answer came from; empty when nothing relevant matched. */
+  sources: ChatSource[]
+}
+
 // --- Research service ---------------------------------------------------------
 // The research service takes a chunk of lecture transcript, filters it down to
 // keywords, searches the web, scrapes the top sites, and returns a single
