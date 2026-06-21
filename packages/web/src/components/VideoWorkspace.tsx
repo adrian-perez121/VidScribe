@@ -179,7 +179,7 @@ function VideoWorkspace({
   const [transcriptGenerating, setTranscriptGenerating] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null)
-  const [isStudyGuideOpen, setIsStudyGuideOpen] = useState(false)
+  const [isStudyGuideOpen] = useState(false)
   const [studyGuide, setStudyGuide] = useState<StudyGuide | null>(null)
   const [studyGuideLoading, setStudyGuideLoading] = useState(false)
   const [studyGuideError, setStudyGuideError] = useState<string | null>(null)
@@ -687,6 +687,7 @@ function VideoWorkspace({
             className="h-full w-full object-contain"
             src={videoSrc}
             controls
+            playsInline
           />
           {lensNote && (
             <div
