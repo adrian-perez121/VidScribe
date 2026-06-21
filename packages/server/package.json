@@ -9,20 +9,21 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@browserbasehq/stagehand": "^3.6.0",
     "@google/genai": "^1.52.0",
-    "@anthropic-ai/sdk": "^0.105.0",
     "@hono/node-server": "^1.13.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@vid-mark/shared": "*",
     "dotenv": "^17.4.2",
+    "fast-safe-stringify": "^2.1.1",
     "hono": "^4.6.0",
     "keyword-extractor": "^0.0.28",
     "pg": "^8.22.0",
     "playwright-core": "^1.61.0",
-    "zod": "^4.4.3",
-    "sharp": "^0.35.2"
+    "sharp": "^0.35.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
