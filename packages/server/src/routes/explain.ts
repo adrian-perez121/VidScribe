@@ -26,6 +26,11 @@ explainRoute.post('/', async (c) => {
 
   const userPrompt = prompt.trim()
 
+  const notesBefore = typeof body['notes_before'] === 'string' ? body['notes_before'].trim() : ''
+  const notesAfter = typeof body['notes_after'] === 'string' ? body['notes_after'].trim() : ''
+  const transcriptBefore = typeof body['transcript_before'] === 'string' ? body['transcript_before'].trim() : ''
+  const transcriptAfter = typeof body['transcript_after'] === 'string' ? body['transcript_after'].trim() : ''
+
   const imageBuffer = Buffer.from(await imageFile.arrayBuffer())
   const resizedBuffer = await sharp(imageBuffer)
     .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
@@ -33,6 +38,16 @@ explainRoute.post('/', async (c) => {
     .toBuffer()
 
   const base64Image = resizedBuffer.toString('base64')
+
+  const contextSections: string[] = []
+  if (transcriptBefore) contextSections.push(`Transcript (15 seconds before the screenshot):\n${transcriptBefore}`)
+  if (transcriptAfter) contextSections.push(`Transcript (15 seconds after the screenshot):\n${transcriptAfter}`)
+  if (notesBefore) contextSections.push(`Viewer notes (15 seconds before the screenshot):\n${notesBefore}`)
+  if (notesAfter) contextSections.push(`Viewer notes (15 seconds after the screenshot):\n${notesAfter}`)
+
+  const contextBlock = contextSections.length > 0
+    ? `\n\nHere is some surrounding context from the video:\n\n${contextSections.join('\n\n')}`
+    : ''
 
   try {
     const message = await client.messages.create({
@@ -52,7 +67,7 @@ explainRoute.post('/', async (c) => {
             },
             {
               type: 'text',
-              text: `A user has shared a cropped screenshot from a YouTube video and is asking: "${userPrompt}"
+              text: `A user has shared a cropped screenshot from a YouTube video and is asking: "${userPrompt}"${contextBlock}
 
 Please explain what's shown in the screenshot in clear, plain language. Focus on directly answering the question.
 
