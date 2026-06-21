@@ -29,15 +29,26 @@ interface RawGuide {
   sections?: { heading?: string; points?: string[] }[]
 }
 
-/** Returns null when there's no material to build from. */
-export async function generateStudyGuide(videoId?: string): Promise<StudyGuide | null> {
+/**
+ * Returns null when there's no material to build from. Pass `{ refresh: true }`
+ * to bypass the cache and regenerate (the "Regenerate" button), overwriting the
+ * cached copy with the fresh one.
+ */
+export async function generateStudyGuide(
+  videoId?: string,
+  opts: { refresh?: boolean } = {},
+): Promise<StudyGuide | null> {
   const cacheKey = guideCacheKey(videoId)
-  const cached = await cacheGet<StudyGuide>(cacheKey)
-  if (cached) {
-    console.log(`[cache] study guide HIT ${cacheKey}`)
-    return cached
+  if (!opts.refresh) {
+    const cached = await cacheGet<StudyGuide>(cacheKey)
+    if (cached) {
+      console.log(`[cache] study guide HIT ${cacheKey}`)
+      return cached
+    }
+    console.log(`[cache] study guide MISS ${cacheKey}`)
+  } else {
+    console.log(`[cache] study guide REFRESH (bypass) ${cacheKey}`)
   }
-  console.log(`[cache] study guide MISS ${cacheKey}`)
 
   const content = await collectContent(videoId)
   if (content.count === 0) return null

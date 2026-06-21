@@ -299,11 +299,11 @@ function VideoWorkspace({
   }
   generateTranscriptRef.current = handleGenerateTranscript
 
-  async function handleGenerateStudyGuide() {
+  async function handleGenerateStudyGuide(refresh = false) {
     setStudyGuideLoading(true)
     setStudyGuideError(null)
     try {
-      const guide = await getStudyGuide(videoId)
+      const guide = await getStudyGuide(videoId, refresh)
       setStudyGuide(guide)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not generate study guide'
@@ -975,9 +975,21 @@ function VideoWorkspace({
 
         {persist && isStudyGuideOpen && (
           <div className="flex max-h-64 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-900 p-3">
-            <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Study Guide
-            </p>
+            <div className="flex shrink-0 items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Study Guide
+              </p>
+              {studyGuide && (
+                <button
+                  type="button"
+                  onClick={() => handleGenerateStudyGuide(true)}
+                  disabled={studyGuideLoading}
+                  className="text-xs font-medium text-indigo-400 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {studyGuideLoading ? 'Regenerating…' : 'Regenerate'}
+                </button>
+              )}
+            </div>
 
             {studyGuideLoading ? (
               <p className="text-sm text-gray-500">Generating study guide…</p>
@@ -1009,7 +1021,7 @@ function VideoWorkspace({
                 </p>
                 <button
                   type="button"
-                  onClick={handleGenerateStudyGuide}
+                  onClick={() => handleGenerateStudyGuide()}
                   disabled={studyGuideLoading}
                   className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >

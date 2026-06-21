@@ -160,14 +160,15 @@ export async function generateTranscript(videoId: string): Promise<VideoTranscri
 
 /**
  * Generate a study guide from a video's notes/lens/research/transcript.
- * Omit `videoId` to build from the whole library. Throws with the backend's
- * error message on failure, including the 404 "no material yet" case.
+ * Omit `videoId` to build from the whole library. Pass `refresh: true` to bypass
+ * the server cache and regenerate. Throws with the backend's error message on
+ * failure, including the 404 "no material yet" case.
  */
-export async function getStudyGuide(videoId?: string): Promise<StudyGuide> {
+export async function getStudyGuide(videoId?: string, refresh = false): Promise<StudyGuide> {
   const res = await fetch('/api/study-guide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(videoId ? { video_id: videoId } : {}),
+    body: JSON.stringify({ ...(videoId ? { video_id: videoId } : {}), ...(refresh ? { refresh: true } : {}) }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => null)
