@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VidscribeNote } from '@vid-mark/shared'
-import { getVideo, saveNote } from '../lib/api'
+import { getVideo, saveNote, deleteNote } from '../lib/api'
 
 // The video + note-taking workspace. Backs BOTH the hardcoded demo (localStorage
 // only) and uploaded videos (localStorage + database).
@@ -233,6 +233,12 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
 
   function handleCancel() {
     setIsComposerOpen(false)
+  }
+
+  function handleDeleteNote(note: VidscribeNote) {
+    if (!window.confirm('Delete this note? This cannot be undone.')) return
+    setNotes((prev) => prev.filter((n) => n.id !== note.id))
+    if (persist) deleteNote(note.id).catch((err) => console.error('Could not delete note:', err))
   }
 
   function handleVisualNoteClick() {
@@ -720,12 +726,22 @@ function VideoWorkspace({ videoId, videoSrc, persist = false, title }: VideoWork
             {videoNotes.map((note) => (
               <li
                 key={note.id}
-                className="w-full rounded-lg border border-gray-800 bg-gray-900 p-3 hover:border-indigo-500"
+                className="relative w-full rounded-lg border border-gray-800 bg-gray-900 p-3 hover:border-indigo-500"
               >
                 <button
                   type="button"
+                  onClick={() => handleDeleteNote(note)}
+                  aria-label="Delete note"
+                  title="Delete note"
+                  className="absolute right-2 top-2 z-10 rounded px-1.5 py-0.5 text-xs text-gray-600 hover:bg-red-950/40 hover:text-red-400"
+                >
+                  ✕
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleNoteClick(note)}
-                  className="w-full text-left"
+                  className="w-full pr-6 text-left"
                 >
                   <div className="flex items-center gap-2">
                     <span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-mono text-indigo-300">
