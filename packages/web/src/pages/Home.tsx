@@ -1,7 +1,19 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { VidscribeNote } from '@vid-mark/shared'
 
 const VIDEO_ID = 'cell-physiology-demo'
+const STORAGE_KEY = 'vidscribe:notes:v1'
+
+function loadNotes(): VidscribeNote[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 function formatTimestamp(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -12,10 +24,14 @@ function formatTimestamp(seconds: number): string {
 
 function Home() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [notes, setNotes] = useState<VidscribeNote[]>([])
+  const [notes, setNotes] = useState<VidscribeNote[]>(loadNotes)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [draftTimestamp, setDraftTimestamp] = useState(0)
   const [draftText, setDraftText] = useState('')
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+  }, [notes])
 
   function handleTextNoteClick() {
     const video = videoRef.current
@@ -25,6 +41,19 @@ function Home() {
     setDraftText('')
     setIsComposerOpen(true)
   }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'n' && e.key !== 'N') return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      e.preventDefault()
+      handleTextNoteClick()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   function handleSave() {
     if (!draftText.trim()) return
