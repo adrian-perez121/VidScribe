@@ -1,6 +1,6 @@
 # Vidscribe
 
-A video annotation tool that lets you take notes on video lectures and automatically research concepts from the transcript using live web sources. Notes are timestamped to the exact moment in the video, giving you a study notebook that remembers where every idea came from. On top of that, a Redis-powered study layer turns your notes and transcripts into a RAG chatbot, study guides, and spaced-repetition flashcards — all exportable to Word.
+A video annotation tool that lets you take notes on video lectures and automatically research concepts from the transcript using live web sources. Notes are timestamped to the exact moment in the video, giving you a study notebook that remembers where every idea came from. On top of that, a Redis-powered study layer turns your notes and transcripts into a RAG chatbot, study guides, and spaced-repetition flashcards — all exportable to Word. Demo video [here](https://www.youtube.com/watch?v=fTBgzcah3Ho).
 
 ## Features
 
